@@ -1,0 +1,204 @@
+import "server-only";
+import { pool } from "@/lib/db";
+
+const CJ_API_BASE = process.env.CJ_API_BASE || "https://developers.cjdropshipping.com/api2.0/v1";
+
+interface CjVariant {
+  vid: string;
+  variantSku: string;
+  variantNameEn?: string;
+  variantKey?: string;
+  barcode?: string;
+  barcode2?: string;
+  variantSellPrice?: number;
+  variantSugSellPrice?: number;
+  variantWeight?: number;
+  variantLength?: number;
+  variantWidth?: number;
+  variantHeight?: number;
+  variantVolume?: number;
+  inventories?: { countryCode: string; totalInventory?: number; cjInventory?: number; factoryInventory?: number; verifiedWarehouse?: number }[];
+}
+
+interface CjProductDetail {
+  pid: string;
+  productSku?: string;
+  productName?: string;
+  productNameEn: string;
+  description?: string;
+  entryCode?: string;
+  bigImage?: string;
+  productImageSet?: string[];
+  categoryId?: string;
+  categoryName?: string;
+  supplierName?: string;
+  listedNum?: number;
+  status?: string;
+  variants?: CjVariant[];
+}
+
+async function cjFetch(path: string): Promise<Record<string, unknown>> {
+  const token = process.env.CJ_ACCESS_TOKEN;
+  if (!token) throw new Error("CJ_ACCESS_TOKEN missing from environment");
+  const res = await fetch(`${CJ_API_BASE}${path}`, {
+    headers: { "CJ-Access-Token": token },
+  });
+  const data = await res.json();
+  if (data.code !== 200) throw new Error(`CJ API error on ${path}: ${data.message}`);
+  return data.data;
+}
+
+/** Accepts a raw pid, or a CJ product page URL like ".../product/...-p-<pid>.html". */
+export function extractPid(input: string): string {
+  const trimmed = input.trim();
+  const urlMatch = trimmed.match(/-p-([A-Za-z0-9-]+)\.html/);
+  if (urlMatch) return urlMatch[1];
+  return trimmed;
+}
+
+async function upsertCategory(categoryId: string | undefined, categoryName: string | undefined): Promise<string | null> {
+  if (!categoryId) return null;
+  const leafName = categoryName?.split("/").pop()?.trim() || categoryName || "Uncategorised";
+  await pool.query(
+    `INSERT INTO cj_category (cj_category_id, name, level, parent_id)
+     VALUES ($1, $2, 3, NULL)
+     ON CONFLICT (cj_category_id) DO UPDATE SET name = EXCLUDED.name`,
+    [categoryId, leafName]
+  );
+  return categoryId;
+}
+
+function parseJsonArrayField(raw: string | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+export interface SyncedProductSummary {
+  productDbId: string;
+  pid: string;
+  nameEn: string;
+}
+
+/** Fetches one product from CJ by pid and upserts it into cj_product/variant/image. */
+export async function syncProductByPid(pid: string, appCategorySlug: string): Promise<SyncedProductSummary> {
+  const detail = (await cjFetch(`/product/query?pid=${encodeURIComponent(pid)}`)) as unknown as CjProductDetail;
+  if (!detail?.pid) throw new Error(`No CJ product found for pid "${pid}"`);
+
+  const nameEnList = parseJsonArrayField(detail.productName);
+  const variants = detail.variants || [];
+  const prices = variants.map((v) => Number(v.variantSellPrice)).filter((n) => !Number.isNaN(n));
+  const weights = variants.map((v) => Number(v.variantWeight)).filter((n) => !Number.isNaN(n));
+
+  const categoryId = await upsertCategory(detail.categoryId, detail.categoryName);
+  const brand = detail.supplierName?.trim() || "CJ Marketplace";
+
+  const productResult = await pool.query(
+    `INSERT INTO cj_product (
+       pid, spu, name_en, name_cn, description_html, hs_code, main_image_url,
+       category_l3_id, currency, price_min, price_max,
+       weight_min_g, weight_max_g, listed_count, sold_out,
+       app_category_slug, brand, raw_payload, is_active, fetched_at
+     ) VALUES (
+       $1,$2,$3,$4,$5,$6,$7,$8,'USD',$9,$10,$11,$12,$13,$14,$15,$16,$17, true, now()
+     )
+     ON CONFLICT (pid) DO UPDATE SET
+       name_en = EXCLUDED.name_en,
+       description_html = EXCLUDED.description_html,
+       main_image_url = EXCLUDED.main_image_url,
+       price_min = EXCLUDED.price_min,
+       price_max = EXCLUDED.price_max,
+       app_category_slug = EXCLUDED.app_category_slug,
+       brand = EXCLUDED.brand,
+       raw_payload = EXCLUDED.raw_payload,
+       is_active = true,
+       fetched_at = now()
+     RETURNING id`,
+    [
+      detail.pid,
+      detail.productSku ?? null,
+      detail.productNameEn,
+      nameEnList[0] || null,
+      detail.description || null,
+      detail.entryCode || null,
+      detail.bigImage || null,
+      categoryId,
+      prices.length ? Math.min(...prices) : null,
+      prices.length ? Math.max(...prices) : null,
+      weights.length ? Math.min(...weights) : null,
+      weights.length ? Math.max(...weights) : null,
+      detail.listedNum ?? null,
+      detail.status === "0",
+      appCategorySlug,
+      brand,
+      JSON.stringify(detail),
+    ]
+  );
+  const productDbId = productResult.rows[0].id as string;
+
+  const images = detail.productImageSet || [];
+  await pool.query(`DELETE FROM cj_product_image WHERE product_id = $1`, [productDbId]);
+  for (let i = 0; i < images.length; i++) {
+    const url = images[i];
+    await pool.query(
+      `INSERT INTO cj_product_image (product_id, position, url, url_path)
+       VALUES ($1, $2, $3, $4) ON CONFLICT (product_id, position) DO NOTHING`,
+      [productDbId, i, url, url.split("?")[0]]
+    );
+  }
+
+  for (const v of variants) {
+    const variantResult = await pool.query(
+      `INSERT INTO cj_variant (
+         product_id, vid, variant_sku, variant_name_en, variant_key_raw, attributes,
+         barcode, barcode2, cost_price, suggested_retail, weight_g,
+         length_mm, width_mm, height_mm, volume_mm3, image_url, fetched_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, now())
+       ON CONFLICT (vid) DO UPDATE SET
+         cost_price = EXCLUDED.cost_price,
+         suggested_retail = EXCLUDED.suggested_retail,
+         fetched_at = now()
+       RETURNING id`,
+      [
+        productDbId,
+        v.vid,
+        v.variantSku,
+        v.variantNameEn || null,
+        v.variantKey || null,
+        JSON.stringify({}),
+        v.barcode || null,
+        v.barcode2 || null,
+        v.variantSellPrice ?? null,
+        v.variantSugSellPrice ?? null,
+        v.variantWeight ?? null,
+        v.variantLength ?? null,
+        v.variantWidth ?? null,
+        v.variantHeight ?? null,
+        v.variantVolume ?? null,
+        null,
+      ]
+    );
+    const variantDbId = variantResult.rows[0].id as string;
+
+    for (const inv of v.inventories || []) {
+      await pool.query(
+        `INSERT INTO cj_variant_inventory (
+           vid, variant_id, country_code, total_inventory, cj_inventory,
+           factory_inventory, verified_warehouse, fetched_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7, now())
+         ON CONFLICT (vid, country_code, fetched_at) DO NOTHING`,
+        [v.vid, variantDbId, inv.countryCode, inv.totalInventory ?? null, inv.cjInventory ?? null, inv.factoryInventory ?? null, inv.verifiedWarehouse ?? null]
+      );
+    }
+  }
+
+  return { productDbId, pid: detail.pid, nameEn: detail.productNameEn };
+}
+
+export async function setProductActive(productDbId: string, isActive: boolean): Promise<void> {
+  await pool.query(`UPDATE cj_product SET is_active = $1 WHERE id = $2`, [isActive, productDbId]);
+}
