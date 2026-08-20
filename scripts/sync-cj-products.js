@@ -101,7 +101,12 @@ async function upsertCategory(client, categoryId, categoryName) {
 async function upsertProduct(client, detail, appCategorySlug) {
   const nameEnList = parseJsonArrayField(detail.productName);
   const variants = detail.variants || [];
-  const prices = variants.map((v) => Number(v.variantSellPrice)).filter((n) => !Number.isNaN(n));
+  // price_min/max drive what customers see -- use CJ's suggested retail, not
+  // variantSellPrice (our cost); see src/lib/cj-sync.ts for why. Falls back
+  // to cost only if a variant has no suggested price.
+  const prices = variants
+    .map((v) => Number(v.variantSugSellPrice ?? v.variantSellPrice))
+    .filter((n) => !Number.isNaN(n));
   const weights = variants.map((v) => Number(v.variantWeight)).filter((n) => !Number.isNaN(n));
 
   const categoryId = await upsertCategory(client, detail.categoryId, detail.categoryName);

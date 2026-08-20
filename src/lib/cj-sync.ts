@@ -109,7 +109,13 @@ export async function syncProductByPid(pid: string, appCategorySlug: string): Pr
 
   const nameEnList = parseJsonArrayField(detail.productName);
   const variants = detail.variants || [];
-  const prices = variants.map((v) => Number(v.variantSellPrice)).filter((n) => !Number.isNaN(n));
+  // price_min/max drive what customers see -- use CJ's suggested retail, not
+  // variantSellPrice (our cost). Displaying cost with no markup means every
+  // sale loses money once shipping/fees are added; see the pricing decision
+  // this followed. Falls back to cost only if a variant has no suggested price.
+  const prices = variants
+    .map((v) => Number(v.variantSugSellPrice ?? v.variantSellPrice))
+    .filter((n) => !Number.isNaN(n));
   const weights = variants.map((v) => Number(v.variantWeight)).filter((n) => !Number.isNaN(n));
 
   const categoryId = await upsertCategory(detail.categoryId, detail.categoryName);
