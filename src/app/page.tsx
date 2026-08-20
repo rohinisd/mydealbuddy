@@ -6,12 +6,16 @@ import { ProductRail } from "@/components/home/ProductRail";
 import { DealCard } from "@/components/home/DealCard";
 import { PromoBanner } from "@/components/home/PromoBanner";
 import { AFFILIATE_DEALS } from "@/data/affiliate-deals";
-import { MOCK_PRODUCTS } from "@/data/mock-products";
+import { getAllProducts } from "@/lib/products";
 
-const TOP_COLLECTION = [...MOCK_PRODUCTS].sort((a, b) => (b.ratingCount ?? 0) - (a.ratingCount ?? 0)).slice(0, 10);
-const HOT_DEALS = MOCK_PRODUCTS.filter((p) => p.badges?.includes("deal")).slice(0, 10);
+export default async function Home() {
+  const products = await getAllProducts();
+  // CJ-synced products have no rating/badge data yet (see scripts/sync-cj-products.js
+  // TODO), so "Top Collection" just falls back to catalog order and "Hot Trending
+  // Deals" will render empty until deal badges get assigned to real products.
+  const TOP_COLLECTION = [...products].sort((a, b) => (b.ratingCount ?? 0) - (a.ratingCount ?? 0)).slice(0, 10);
+  const HOT_DEALS = products.filter((p) => p.badges?.includes("deal")).slice(0, 10);
 
-export default function Home() {
   return (
     <>
       <Header />

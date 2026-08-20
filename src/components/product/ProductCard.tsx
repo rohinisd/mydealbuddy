@@ -19,15 +19,31 @@ export function ProductCard({ product }: { product: Product }) {
         className="relative block aspect-[3/4] w-full overflow-hidden rounded-md border border-border bg-surface-grey"
       >
         {/* Base image */}
-        <div
-          className="absolute inset-0 transition-opacity duration-200 group-hover:opacity-0"
-          style={{ backgroundColor: product.swatch }}
-        />
+        {product.image ? (
+          <img
+            src={product.image}
+            alt={product.name}
+            className="absolute inset-0 h-full w-full object-cover transition-opacity duration-200 group-hover:opacity-0"
+          />
+        ) : (
+          <div
+            className="absolute inset-0 transition-opacity duration-200 group-hover:opacity-0"
+            style={{ backgroundColor: product.swatch }}
+          />
+        )}
         {/* Hover / alternate image */}
-        <div
-          className="absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-          style={{ backgroundColor: product.swatchHover }}
-        />
+        {product.images?.[1] ? (
+          <img
+            src={product.images[1]}
+            alt={product.name}
+            className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+          />
+        ) : (
+          <div
+            className="absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+            style={{ backgroundColor: product.swatchHover }}
+          />
+        )}
 
         {/* Top-left badge */}
         {(dealBadge || newBadge || pct) && (

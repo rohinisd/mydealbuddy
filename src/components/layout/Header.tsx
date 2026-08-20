@@ -4,11 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { NAV_CATEGORIES } from "@/data/categories";
 import { useCart } from "@/context/CartContext";
+import { SearchBar } from "@/components/layout/SearchBar";
 import {
   BagIcon,
   ChevronDownIcon,
   MenuIcon,
-  SearchIcon,
   UserIcon,
   XIcon,
 } from "@/components/icons/Icons";
@@ -96,14 +96,10 @@ export function Header() {
         </nav>
 
         {/* Search */}
-        <div className="relative ml-auto hidden max-w-md flex-1 md:block">
-          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-          <input
-            type="search"
-            placeholder="Search for products, brands and deals"
-            className="w-full rounded-full border border-border-strong bg-surface-grey py-2 pl-9 pr-4 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
-          />
-        </div>
+        <SearchBar
+          outerClassName="relative ml-auto hidden max-w-md flex-1 md:block"
+          inputClassName="w-full rounded-full border border-border-strong bg-surface-grey py-2 pl-9 pr-4 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+        />
 
         {/* Icon actions */}
         <div className="ml-auto flex items-center gap-5 md:ml-0">
@@ -131,14 +127,11 @@ export function Header() {
 
       {/* Mobile search (always visible under main row on small screens) */}
       <div className="border-t border-border px-4 py-2 md:hidden">
-        <div className="relative">
-          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-          <input
-            type="search"
-            placeholder="Search products, categories and deals"
-            className="w-full rounded-full border border-border-strong bg-surface-grey py-2 pl-9 pr-4 text-sm placeholder:text-text-muted focus:border-accent focus:outline-none"
-          />
-        </div>
+        <SearchBar
+          outerClassName="relative"
+          inputClassName="w-full rounded-full border border-border-strong bg-surface-grey py-2 pl-9 pr-4 text-sm placeholder:text-text-muted focus:border-accent focus:outline-none"
+          placeholder="Search products, categories and deals"
+        />
       </div>
 
       {/* Mobile nav drawer */}

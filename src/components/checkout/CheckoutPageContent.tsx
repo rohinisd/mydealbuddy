@@ -4,16 +4,27 @@ import { useState } from "react";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/plp/Breadcrumb";
 import { useCart } from "@/context/CartContext";
-import { getProductById } from "@/lib/products";
+import { useProductsByIds } from "@/hooks/useProductsByIds";
 
 export function CheckoutPageContent() {
   const { lines } = useCart();
   const [placed, setPlaced] = useState(false);
 
+  const { products, loading } = useProductsByIds(lines.map((l) => l.productId));
+  const productById = new Map(products.map((p) => [p.id, p]));
   const resolved = lines
-    .map((line) => ({ line, product: getProductById(line.productId) }))
-    .filter((r): r is { line: typeof lines[number]; product: NonNullable<ReturnType<typeof getProductById>> } => !!r.product);
+    .map((line) => ({ line, product: productById.get(line.productId) }))
+    .filter((r): r is { line: typeof lines[number]; product: NonNullable<typeof r.product> } => !!r.product);
   const subtotal = resolved.reduce((sum, r) => sum + r.product.price * r.line.quantity, 0);
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-[1280px] px-4 py-6">
+        <Breadcrumb items={[{ label: "Home", href: "/" }, { label: "Cart", href: "/cart" }, { label: "Checkout" }]} />
+        <p className="py-20 text-center text-sm text-text-muted">Loading checkout…</p>
+      </div>
+    );
+  }
 
   if (resolved.length === 0 && !placed) {
     return (

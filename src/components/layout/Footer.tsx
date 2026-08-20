@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { NAV_CATEGORIES } from "@/data/categories";
+import { NewsletterForm } from "@/components/layout/NewsletterForm";
 
 const CUSTOMER_POLICY_LINKS = [
   { label: "Contact Support", href: "/contact" },
@@ -78,19 +79,7 @@ export function Footer() {
             <p className="mb-3 text-sm text-text-secondary">
               Get the best deals dropped straight into your inbox.
             </p>
-            <form className="flex gap-2">
-              <input
-                type="email"
-                placeholder="Email address"
-                className="w-full rounded-md border border-border-strong bg-white px-3 py-2 text-sm placeholder:text-text-muted focus:border-accent focus:outline-none"
-              />
-              <button
-                type="submit"
-                className="btn-tracking shrink-0 rounded-md bg-accent px-4 py-2 text-xs font-bold uppercase text-white hover:opacity-90"
-              >
-                Join
-              </button>
-            </form>
+            <NewsletterForm />
             <div className="mt-4 flex gap-3 text-xs font-semibold text-text-secondary">
               {SOCIALS.map((s) => (
                 <span key={s} className="rounded-full border border-border-strong px-3 py-1">

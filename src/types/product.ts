@@ -14,9 +14,14 @@ export interface Product {
   badges?: ProductBadge[];
   buddyCoins?: number;
   inStock?: boolean;
-  /** Placeholder swatch colors since no real product photography exists yet. */
+  /** Real CJ SKU (productSku), when synced. */
+  sku?: string;
+  /** Placeholder swatch colors, used when no real photo is available. */
   swatch: string;
   swatchHover: string;
+  /** Real product photo (e.g. synced from CJ). Falls back to swatch when absent. */
+  image?: string;
+  images?: string[];
 }
 
 export function discountPct(price: number, mrp?: number): number | undefined {
@@ -24,11 +29,7 @@ export function discountPct(price: number, mrp?: number): number | undefined {
   return Math.round(((mrp - price) / mrp) * 100);
 }
 
-/**
- * CJ-sourced products carry a `CJ...`-prefixed SKU from the supplier push into
- * WooCommerce (read-only in our app — see the sourcing/listing doc). Mock data
- * doesn't set one explicitly, so derive a placeholder in that same shape.
- */
+/** Falls back to a derived placeholder only if a product was synced without a SKU. */
 export function getSku(product: Product): string {
-  return `CJ${product.id.padStart(6, "0")}`;
+  return product.sku ?? `CJ${product.id.padStart(6, "0")}`;
 }

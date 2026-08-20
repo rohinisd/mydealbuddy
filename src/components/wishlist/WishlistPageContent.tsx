@@ -4,11 +4,20 @@ import Link from "next/link";
 import { Breadcrumb } from "@/components/plp/Breadcrumb";
 import { ProductCard } from "@/components/product/ProductCard";
 import { useWishlist } from "@/context/WishlistContext";
-import { getProductById } from "@/lib/products";
+import { useProductsByIds } from "@/hooks/useProductsByIds";
 
 export function WishlistPageContent() {
   const { ids } = useWishlist();
-  const products = ids.map(getProductById).filter((p): p is NonNullable<typeof p> => !!p);
+  const { products, loading } = useProductsByIds(ids);
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-[1280px] px-4 py-6">
+        <Breadcrumb items={[{ label: "Home", href: "/" }, { label: "Wishlist" }]} />
+        <p className="py-20 text-center text-sm text-text-muted">Loading your wishlist…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-6">

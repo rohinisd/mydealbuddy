@@ -2,24 +2,31 @@
 
 import { useState } from "react";
 import { useCart } from "@/context/CartContext";
-import { MOCK_PRODUCTS } from "@/data/mock-products";
-import { getSku } from "@/types/product";
+import type { Product } from "@/types/product";
 
 export function QuickOrderForm() {
   const { addItem } = useCart();
   const [sku, setSku] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [message, setMessage] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const product = MOCK_PRODUCTS.find((p) => getSku(p).toLowerCase() === sku.trim().toLowerCase());
-    if (!product) {
-      setMessage(`No product found for SKU "${sku}". Try one like ${getSku(MOCK_PRODUCTS[0])}.`);
-      return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/products?sku=${encodeURIComponent(sku.trim())}`);
+      const products: Product[] = await res.json();
+      const product = products[0];
+      if (!product) {
+        setMessage(`No product found for SKU "${sku}".`);
+        return;
+      }
+      addItem(product.id, product.options?.[0], quantity);
+      setMessage(`Added "${product.name}" (×${quantity}) to your bag.`);
+    } finally {
+      setSubmitting(false);
     }
-    addItem(product.id, product.options?.[0], quantity);
-    setMessage(`Added "${product.name}" (×${quantity}) to your bag.`);
   }
 
   return (
@@ -29,7 +36,7 @@ export function QuickOrderForm() {
           required
           value={sku}
           onChange={(e) => setSku(e.target.value)}
-          placeholder={`SKU, e.g. ${getSku(MOCK_PRODUCTS[0])}`}
+          placeholder="Enter product SKU"
           className="rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
         />
         <div className="flex items-center rounded-md border border-border-strong">
@@ -42,8 +49,12 @@ export function QuickOrderForm() {
           </button>
         </div>
       </div>
-      <button type="submit" className="btn-tracking rounded-md bg-accent px-6 py-2.5 text-sm font-bold uppercase text-white hover:opacity-90">
-        Add to Bag
+      <button
+        type="submit"
+        disabled={submitting}
+        className="btn-tracking rounded-md bg-accent px-6 py-2.5 text-sm font-bold uppercase text-white hover:opacity-90 disabled:opacity-60"
+      >
+        {submitting ? "Looking up…" : "Add to Bag"}
       </button>
       {message && <p className="rounded-md border border-dashed border-border bg-surface-grey p-3 text-sm text-text-secondary">{message}</p>}
     </form>

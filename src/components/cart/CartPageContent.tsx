@@ -6,7 +6,7 @@ import { Breadcrumb } from "@/components/plp/Breadcrumb";
 import { CoinIcon } from "@/components/icons/Icons";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
-import { getProductById } from "@/lib/products";
+import { useProductsByIds } from "@/hooks/useProductsByIds";
 
 export function CartPageContent() {
   const { lines, removeItem, setQuantity } = useCart();
@@ -14,9 +14,20 @@ export function CartPageContent() {
   const [coupon, setCoupon] = useState("");
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
 
+  const { products, loading } = useProductsByIds(lines.map((l) => l.productId));
+  const productById = new Map(products.map((p) => [p.id, p]));
   const resolved = lines
-    .map((line) => ({ line, product: getProductById(line.productId) }))
-    .filter((r): r is { line: typeof lines[number]; product: NonNullable<ReturnType<typeof getProductById>> } => !!r.product);
+    .map((line) => ({ line, product: productById.get(line.productId) }))
+    .filter((r): r is { line: typeof lines[number]; product: NonNullable<typeof r.product> } => !!r.product);
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-[1280px] px-4 py-6">
+        <Breadcrumb items={[{ label: "Home", href: "/" }, { label: "Cart" }]} />
+        <p className="py-20 text-center text-sm text-text-muted">Loading your bag…</p>
+      </div>
+    );
+  }
 
   const subtotal = resolved.reduce((sum, r) => sum + r.product.price * r.line.quantity, 0);
   const mrpTotal = resolved.reduce((sum, r) => sum + (r.product.mrp ?? r.product.price) * r.line.quantity, 0);
@@ -58,9 +69,14 @@ export function CartPageContent() {
               <div key={`${line.productId}-${line.option ?? ""}`} className="flex gap-4 p-4">
                 <Link
                   href={`/product/${product.slug}`}
-                  className="h-24 w-20 shrink-0 rounded-md border border-border"
+                  className="h-24 w-20 shrink-0 overflow-hidden rounded-md border border-border"
                   style={{ backgroundColor: product.swatch }}
-                />
+                >
+                  {product.image && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
+                  )}
+                </Link>
                 <div className="flex flex-1 flex-col">
                   <div className="flex items-start justify-between gap-2">
                     <div>

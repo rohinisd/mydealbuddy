@@ -1,11 +1,12 @@
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { ProductListingPage } from "@/components/plp/ProductListingPage";
-import { MOCK_PRODUCTS } from "@/data/mock-products";
+import { getAllProducts } from "@/lib/products";
 
 export const metadata = { title: "Shop | MyDealBuddy" };
 
-export default function ShopPage() {
+export default async function ShopPage() {
+  const products = await getAllProducts();
   return (
     <>
       <Header />
@@ -13,7 +14,7 @@ export default function ShopPage() {
         <ProductListingPage
           title="Shop"
           crumbs={[{ label: "Home", href: "/" }, { label: "Shop" }]}
-          products={MOCK_PRODUCTS}
+          products={products}
         />
       </main>
       <Footer />

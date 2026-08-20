@@ -23,7 +23,17 @@ const RATING_DISTRIBUTION = [
   { stars: 1, pct: 2 },
 ];
 
-function GalleryTile({ color, index }: { color: string; index: number }) {
+function GalleryTile({ color, image, index }: { color: string; image?: string; index: number }) {
+  if (image) {
+    return (
+      <img
+        src={image}
+        alt=""
+        className="aspect-[3/4] w-full rounded-md border border-border object-cover"
+        style={{ opacity: index === 0 ? 1 : 0.85 }}
+      />
+    );
+  }
   return (
     <div
       className="aspect-[3/4] w-full rounded-md border border-border"
@@ -45,10 +55,11 @@ export function ProductDetail({ product, related }: { product: Product; related:
   const pct = discountPct(product.price, product.mrp);
   const wishlisted = has(product.id);
 
-  const gallery = useMemo(
-    () => [product.swatch, product.swatchHover, product.swatch, product.swatchHover],
-    [product.swatch, product.swatchHover]
-  );
+  const gallery = useMemo(() => {
+    if (product.images && product.images.length > 0) return product.images.slice(0, 4);
+    return [product.swatch, product.swatchHover, product.swatch, product.swatchHover];
+  }, [product.swatch, product.swatchHover, product.images]);
+  const hasRealImages = Boolean(product.images && product.images.length > 0);
 
   function handleAddToCart() {
     addItem(product.id, selectedOption, quantity);
@@ -80,8 +91,13 @@ export function ProductDetail({ product, related }: { product: Product; related:
       <div className="mt-4 grid grid-cols-1 gap-10 lg:grid-cols-2">
         {/* Image grid */}
         <div className="grid grid-cols-2 gap-2">
-          {gallery.map((color, i) => (
-            <GalleryTile key={i} color={color} index={i} />
+          {gallery.map((src, i) => (
+            <GalleryTile
+              key={i}
+              color={hasRealImages ? product.swatch : src}
+              image={hasRealImages ? src : undefined}
+              index={i}
+            />
           ))}
         </div>
 
