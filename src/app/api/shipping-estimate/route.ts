@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getShippingEstimate } from "@/lib/cj-shipping";
 import { isValidPostalCode } from "@/lib/postal-codes";
+import { verifyPostalCodeExists } from "@/lib/postal-lookup";
 
 export async function GET(request: NextRequest) {
   const productId = request.nextUrl.searchParams.get("productId");
@@ -17,6 +18,13 @@ export async function GET(request: NextRequest) {
   // ourselves before it ever reaches CJ -- and before burning a QPS-limited call.
   if (!isValidPostalCode(country, zip)) {
     return NextResponse.json({ error: "That doesn't look like a valid postal/ZIP code for the selected country." }, { status: 400 });
+  }
+
+  // Format-valid but not necessarily real (e.g. "780001" looks like an Indian
+  // PIN but isn't one) -- check real existence where we have reliable coverage.
+  const exists = await verifyPostalCodeExists(country, zip);
+  if (exists === false) {
+    return NextResponse.json({ error: "That postal/ZIP code doesn't appear to exist. Double-check it and try again." }, { status: 400 });
   }
 
   try {
