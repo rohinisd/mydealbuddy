@@ -18,14 +18,17 @@ if (!CJ_ACCESS_TOKEN) {
   process.exit(1);
 }
 
-// Small first batch: a few products per app category, to prove the pipeline
-// end-to-end. Expand this list (or replace with real category IDs) once
-// you're ready to populate the full catalog.
+// Covers all 6 nav categories (src/data/categories.ts). Still keyword-search
+// based rather than real CJ category IDs -- fine at this catalog size, revisit
+// with proper category filtering once populating the full catalog for real.
 const SEARCH_BUCKETS = [
-  { appCategory: "electronics", keyword: "wireless earbuds", limit: 3 },
-  { appCategory: "auto-home", keyword: "car phone holder", limit: 3 },
-  { appCategory: "home-kitchen", keyword: "kitchen organizer", limit: 3 },
-  { appCategory: "beauty-personal-care", keyword: "facial massager", limit: 3 },
+  { appCategory: "electronics", keyword: "wireless earbuds", limit: 4 },
+  { appCategory: "auto-home", keyword: "car organizer", limit: 4 },
+  { appCategory: "home-kitchen", keyword: "kitchen organizer", limit: 4 },
+  { appCategory: "home-kitchen", keyword: "kitchen gadget", limit: 2 },
+  { appCategory: "beauty-personal-care", keyword: "facial massager", limit: 4 },
+  { appCategory: "fashion", keyword: "sunglasses", limit: 4 },
+  { appCategory: "health-fitness", keyword: "dumbbell", limit: 4 },
 ];
 
 async function cjFetch(path, opts = {}) {
@@ -101,7 +104,10 @@ async function upsertProduct(client, detail, appCategorySlug) {
        main_image_url = EXCLUDED.main_image_url,
        price_min = EXCLUDED.price_min,
        price_max = EXCLUDED.price_max,
-       app_category_slug = EXCLUDED.app_category_slug,
+       -- Preserve whichever bucket first claimed this product -- a generic
+       -- item (e.g. "organizer") can match multiple keyword searches, and
+       -- without this a later bucket's re-sync silently reassigns its category.
+       app_category_slug = COALESCE(cj_product.app_category_slug, EXCLUDED.app_category_slug),
        brand = EXCLUDED.brand,
        raw_payload = EXCLUDED.raw_payload,
        fetched_at = now()

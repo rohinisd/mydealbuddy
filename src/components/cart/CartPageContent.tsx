@@ -136,14 +136,18 @@ export function CartPageContent() {
             <div className="sticky top-24 rounded-md border border-border p-4">
               <p className="mb-3 text-xs font-bold uppercase tracking-wide text-text-muted">Price Details</p>
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between text-text-secondary">
-                  <span>Total MRP</span>
-                  <span>${mrpTotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-price-note">
-                  <span>Discount on MRP</span>
-                  <span>− ${savings.toFixed(2)}</span>
-                </div>
+                {savings > 0 && (
+                  <>
+                    <div className="flex justify-between text-text-secondary">
+                      <span>Total MRP</span>
+                      <span>${mrpTotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-price-note">
+                      <span>Discount on MRP</span>
+                      <span>− ${savings.toFixed(2)}</span>
+                    </div>
+                  </>
+                )}
                 <div className="flex justify-between text-text-secondary">
                   <span>Shipping</span>
                   <span className="text-price-note">FREE</span>
