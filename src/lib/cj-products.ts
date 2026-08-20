@@ -1,6 +1,6 @@
 import "server-only";
 import { pool } from "@/lib/db";
-import type { Product } from "@/types/product";
+import type { Product, ProductReview } from "@/types/product";
 
 // Slug is derived deterministically (CJ has no concept of one) so it's
 // stable across reads without needing storage.
@@ -127,6 +127,30 @@ export async function getProductsByIds(ids: string[]): Promise<Product[]> {
   if (ids.length === 0) return [];
   const res = await pool.query(`${BASE_QUERY} AND p.id = ANY($1)`, [ids]);
   return res.rows.map((row) => rowToProduct(row, row.main_image_url));
+}
+
+// description_html can be sizeable, so it's fetched separately from BASE_QUERY
+// (used everywhere, including bulk listings) rather than bloating every call site.
+export async function getProductDescription(productId: string): Promise<string | undefined> {
+  const res = await pool.query(`SELECT description_html FROM cj_product WHERE id = $1`, [productId]);
+  return res.rows[0]?.description_html ?? undefined;
+}
+
+export async function getProductReviews(productId: string, limit = 20): Promise<ProductReview[]> {
+  const res = await pool.query(
+    `SELECT id, author_masked, score, body, commented_at
+     FROM cj_product_review WHERE product_id = $1 ORDER BY commented_at DESC NULLS LAST LIMIT $2`,
+    [productId, limit]
+  );
+  return res.rows
+    .filter((r) => r.body)
+    .map((r) => ({
+      id: String(r.id),
+      author: r.author_masked || "Verified Buyer",
+      rating: r.score,
+      date: r.commented_at ? new Date(r.commented_at).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "",
+      text: r.body,
+    }));
 }
 
 export async function getRelatedProducts(product: Product, limit = 4): Promise<Product[]> {

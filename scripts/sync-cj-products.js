@@ -9,6 +9,24 @@
 
 require("dotenv").config({ path: ".env.local" });
 const { Client } = require("pg");
+const sanitizeHtml = require("sanitize-html");
+
+// CJ descriptions come from third-party suppliers -- sanitize before storage,
+// matching src/lib/cj-sync.ts (the admin-panel sync path).
+function sanitizeDescription(html) {
+  if (!html) return null;
+  return sanitizeHtml(html, {
+    allowedTags: ["p", "br", "b", "strong", "i", "em", "u", "span", "ul", "ol", "li", "img", "a", "font", "blockquote"],
+    allowedAttributes: {
+      img: ["src", "alt", "style", "width", "height"],
+      a: ["href", "title", "target"],
+      span: ["style"],
+      font: ["style"],
+      "*": ["style"],
+    },
+    allowedSchemes: ["https"],
+  });
+}
 
 const CJ_API_BASE = process.env.CJ_API_BASE || "https://developers.cjdropshipping.com/api2.0/v1";
 const CJ_ACCESS_TOKEN = process.env.CJ_ACCESS_TOKEN;
@@ -117,7 +135,7 @@ async function upsertProduct(client, detail, appCategorySlug) {
       detail.productSku,
       detail.productNameEn,
       nameEnList[0] || null,
-      detail.description || null,
+      sanitizeDescription(detail.description),
       detail.entryCode || null,
       detail.bigImage || null,
       categoryId,

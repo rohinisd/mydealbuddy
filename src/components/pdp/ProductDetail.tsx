@@ -7,21 +7,16 @@ import { CoinIcon, HeartIcon, ShareIcon, StarIcon, TagIcon, TruckIcon } from "@/
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { PRODUCT_CATEGORIES } from "@/data/categories";
-import { discountPct, getSku, type Product } from "@/types/product";
+import { discountPct, getSku, type Product, type ProductReview } from "@/types/product";
 
-const MOCK_REVIEWS = [
-  { name: "Priya S.", rating: 5, date: "3 weeks ago", text: "Exactly as described, arrived faster than expected. Great value for the price." },
-  { name: "Marcus T.", rating: 4, date: "1 month ago", text: "Good quality overall. Packaging could be sturdier but the product itself is solid." },
-  { name: "Aisha K.", rating: 5, date: "2 months ago", text: "Bought this after seeing the deal price and it did not disappoint. Would buy again." },
-];
-
-const RATING_DISTRIBUTION = [
-  { stars: 5, pct: 62 },
-  { stars: 4, pct: 24 },
-  { stars: 3, pct: 9 },
-  { stars: 2, pct: 3 },
-  { stars: 1, pct: 2 },
-];
+function ratingDistribution(reviews: ProductReview[]) {
+  const counts = [5, 4, 3, 2, 1].map((stars) => ({
+    stars,
+    count: reviews.filter((r) => Math.round(r.rating) === stars).length,
+  }));
+  const total = reviews.length;
+  return counts.map((c) => ({ stars: c.stars, pct: total > 0 ? Math.round((c.count / total) * 100) : 0 }));
+}
 
 function GalleryTile({ color, image, index }: { color: string; image?: string; index: number }) {
   if (image) {
@@ -42,7 +37,15 @@ function GalleryTile({ color, image, index }: { color: string; image?: string; i
   );
 }
 
-export function ProductDetail({ product, related }: { product: Product; related: Product[] }) {
+export function ProductDetail({
+  product,
+  related,
+  reviews,
+}: {
+  product: Product;
+  related: Product[];
+  reviews: ProductReview[];
+}) {
   const { addItem } = useCart();
   const { has, toggle } = useWishlist();
   const [selectedOption, setSelectedOption] = useState(product.options?.[0]);
@@ -54,6 +57,7 @@ export function ProductDetail({ product, related }: { product: Product; related:
   const category = PRODUCT_CATEGORIES.find((c) => c.slug === product.category);
   const pct = discountPct(product.price, product.mrp);
   const wishlisted = has(product.id);
+  const distribution = useMemo(() => ratingDistribution(reviews), [reviews]);
 
   const gallery = useMemo(() => {
     if (product.images && product.images.length > 0) return product.images.slice(0, 4);
@@ -259,11 +263,14 @@ export function ProductDetail({ product, related }: { product: Product; related:
       {/* Product details */}
       <div className="mt-12 max-w-3xl border-t border-border pt-8">
         <h2 className="mb-4 text-lg font-bold text-text-primary">Product Details</h2>
-        <p className="text-sm leading-relaxed text-text-secondary">
-          The {product.name.toLowerCase()} from {product.brand} is built for everyday reliability without the
-          everyday price tag. Full specifications and detailed descriptions sync in automatically once this
-          product is connected to the live WooCommerce catalog.
-        </p>
+        {product.description ? (
+          <div
+            className="prose prose-sm max-w-none text-sm leading-relaxed text-text-secondary [&_img]:max-w-full [&_img]:rounded-md"
+            dangerouslySetInnerHTML={{ __html: product.description }}
+          />
+        ) : (
+          <p className="text-sm leading-relaxed text-text-secondary">No description available for this product yet.</p>
+        )}
         <dl className="mt-5 grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
           <div className="flex justify-between border-b border-border py-2 sm:justify-start sm:gap-4">
             <dt className="text-text-muted">Brand</dt>
@@ -297,7 +304,7 @@ export function ProductDetail({ product, related }: { product: Product; related:
               <p className="mt-1 text-xs text-text-muted">{product.ratingCount} Ratings</p>
             </div>
             <div className="flex-1 space-y-1.5">
-              {RATING_DISTRIBUTION.map((row) => (
+              {distribution.map((row) => (
                 <div key={row.stars} className="flex items-center gap-2 text-xs text-text-muted">
                   <span className="w-3">{row.stars}</span>
                   <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-grey">
@@ -313,14 +320,14 @@ export function ProductDetail({ product, related }: { product: Product; related:
         )}
 
         <ul className="mt-6 space-y-5">
-          {MOCK_REVIEWS.map((review) => (
-            <li key={review.name} className="border-t border-border pt-4">
+          {reviews.map((review) => (
+            <li key={review.id} className="border-t border-border pt-4">
               <div className="flex items-center gap-2">
                 <span className="flex items-center gap-1 rounded bg-rating px-1.5 py-0.5 text-xs font-semibold text-white">
                   {review.rating.toFixed(1)} <StarIcon className="h-3 w-3" />
                 </span>
-                <span className="text-sm font-semibold text-text-primary">{review.name}</span>
-                <span className="text-xs text-text-muted">· {review.date}</span>
+                <span className="text-sm font-semibold text-text-primary">{review.author}</span>
+                {review.date && <span className="text-xs text-text-muted">· {review.date}</span>}
               </div>
               <p className="mt-1.5 text-sm text-text-secondary">{review.text}</p>
             </li>

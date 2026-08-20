@@ -1,7 +1,25 @@
 import "server-only";
+import sanitizeHtml from "sanitize-html";
 import { pool } from "@/lib/db";
 
 const CJ_API_BASE = process.env.CJ_API_BASE || "https://developers.cjdropshipping.com/api2.0/v1";
+
+// CJ descriptions come from third-party suppliers -- sanitize before storage
+// so nothing downstream has to think about untrusted HTML from the supply chain.
+function sanitizeDescription(html: string | undefined): string | null {
+  if (!html) return null;
+  return sanitizeHtml(html, {
+    allowedTags: ["p", "br", "b", "strong", "i", "em", "u", "span", "ul", "ol", "li", "img", "a", "font", "blockquote"],
+    allowedAttributes: {
+      img: ["src", "alt", "style", "width", "height"],
+      a: ["href", "title", "target"],
+      span: ["style"],
+      font: ["style"],
+      "*": ["style"],
+    },
+    allowedSchemes: ["https"],
+  });
+}
 
 interface CjVariant {
   vid: string;
@@ -123,7 +141,7 @@ export async function syncProductByPid(pid: string, appCategorySlug: string): Pr
       detail.productSku ?? null,
       detail.productNameEn,
       nameEnList[0] || null,
-      detail.description || null,
+      sanitizeDescription(detail.description),
       detail.entryCode || null,
       detail.bigImage || null,
       categoryId,

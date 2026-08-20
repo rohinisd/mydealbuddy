@@ -22,6 +22,16 @@ export interface Product {
   /** Real product photo (e.g. synced from CJ). Falls back to swatch when absent. */
   image?: string;
   images?: string[];
+  /** Sanitized HTML, synced from CJ (see src/lib/cj-sync.ts). */
+  description?: string;
+}
+
+export interface ProductReview {
+  id: string;
+  author: string;
+  rating: number;
+  date: string;
+  text: string;
 }
 
 export function discountPct(price: number, mrp?: number): number | undefined {
