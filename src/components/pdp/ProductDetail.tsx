@@ -9,6 +9,14 @@ import { useWishlist } from "@/context/WishlistContext";
 import { PRODUCT_CATEGORIES } from "@/data/categories";
 import { discountPct, getSku, type Product, type ProductReview } from "@/types/product";
 
+interface ShippingOption {
+  method: string;
+  cost: number;
+  agingText: string;
+  minDays: number | null;
+  maxDays: number | null;
+}
+
 function ratingDistribution(reviews: ProductReview[]) {
   const counts = [5, 4, 3, 2, 1].map((stars) => ({
     stars,
@@ -51,7 +59,9 @@ export function ProductDetail({
   const [selectedOption, setSelectedOption] = useState(product.options?.[0]);
   const [quantity, setQuantity] = useState(1);
   const [zip, setZip] = useState("");
-  const [deliveryEstimate, setDeliveryEstimate] = useState<string | null>(null);
+  const [shippingOptions, setShippingOptions] = useState<ShippingOption[] | null>(null);
+  const [shippingError, setShippingError] = useState<string | null>(null);
+  const [checkingDelivery, setCheckingDelivery] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
 
   const category = PRODUCT_CATEGORIES.find((c) => c.slug === product.category);
@@ -71,15 +81,27 @@ export function ProductDetail({
     window.setTimeout(() => setJustAdded(false), 2000);
   }
 
-  function handleCheckDelivery(e: React.FormEvent) {
+  async function handleCheckDelivery(e: React.FormEvent) {
     e.preventDefault();
     if (!zip.trim()) return;
-    const from = new Date();
-    const to = new Date();
-    from.setDate(from.getDate() + 4);
-    to.setDate(to.getDate() + 7);
-    const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    setDeliveryEstimate(`Delivery by ${fmt(from)} – ${fmt(to)}`);
+    setCheckingDelivery(true);
+    setShippingError(null);
+    setShippingOptions(null);
+    try {
+      const res = await fetch(
+        `/api/shipping-estimate?productId=${encodeURIComponent(product.id)}&zip=${encodeURIComponent(zip.trim())}&quantity=${quantity}`
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setShippingError(data.error || "Couldn't get a shipping estimate for that ZIP code.");
+        return;
+      }
+      setShippingOptions(data);
+    } catch {
+      setShippingError("Couldn't reach the shipping service. Try again.");
+    } finally {
+      setCheckingDelivery(false);
+    }
   }
 
   return (
@@ -225,12 +247,29 @@ export function ProductDetail({
               />
               <button
                 type="submit"
-                className="rounded-md border border-border-strong px-4 py-2 text-sm font-semibold text-text-primary hover:border-accent"
+                disabled={checkingDelivery}
+                className="rounded-md border border-border-strong px-4 py-2 text-sm font-semibold text-text-primary hover:border-accent disabled:opacity-60"
               >
-                Check
+                {checkingDelivery ? "Checking..." : "Check"}
               </button>
             </div>
-            {deliveryEstimate && <p className="mt-2 text-sm text-price-note">{deliveryEstimate}</p>}
+            {shippingError && <p className="mt-2 text-sm text-discount">{shippingError}</p>}
+            {shippingOptions && shippingOptions.length > 0 && (
+              <ul className="mt-2 space-y-1.5">
+                {shippingOptions.slice(0, 3).map((opt) => (
+                  <li key={opt.method} className="flex items-baseline justify-between text-sm">
+                    <span className="text-text-secondary">
+                      {opt.method}
+                      {opt.agingText && <span className="text-text-muted"> · {opt.agingText} days</span>}
+                    </span>
+                    <span className="font-semibold text-text-primary">${opt.cost.toFixed(2)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {shippingOptions && shippingOptions.length === 0 && (
+              <p className="mt-2 text-sm text-text-muted">No shipping methods available for that ZIP code.</p>
+            )}
             <p className="mt-1 text-xs text-text-muted">Easy 7-day returns &amp; exchange</p>
           </form>
 
