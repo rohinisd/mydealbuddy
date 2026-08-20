@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PRODUCT_CATEGORIES } from "@/data/categories";
 import type { AdminProductRow } from "@/lib/admin-products";
@@ -90,9 +91,14 @@ export default function AdminPage() {
     <div className="mx-auto max-w-[1000px] px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-text-primary">Product Admin</h1>
-        <button onClick={handleLogout} className="text-sm font-semibold text-text-secondary hover:text-accent">
-          Log out
-        </button>
+        <div className="flex items-center gap-4">
+          <Link href="/admin/coupons" className="text-sm font-semibold text-text-secondary hover:text-accent">
+            Coupons →
+          </Link>
+          <button onClick={handleLogout} className="text-sm font-semibold text-text-secondary hover:text-accent">
+            Log out
+          </button>
+        </div>
       </div>
 
       <form onSubmit={handleAdd} className="mb-8 flex flex-wrap gap-2 rounded-md border border-border p-4">

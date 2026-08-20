@@ -6,13 +6,16 @@ import { Breadcrumb } from "@/components/plp/Breadcrumb";
 import { CoinIcon } from "@/components/icons/Icons";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
+import { useCoupon } from "@/context/CouponContext";
 import { useProductsByIds } from "@/hooks/useProductsByIds";
 
 export function CartPageContent() {
   const { lines, removeItem, setQuantity } = useCart();
   const { toggle: toggleWishlist } = useWishlist();
+  const { applied, setApplied, clear: clearCoupon } = useCoupon();
   const [coupon, setCoupon] = useState("");
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
 
   const { products, loading } = useProductsByIds(lines.map((l) => l.productId));
   const productById = new Map(products.map((p) => [p.id, p]));
@@ -33,15 +36,39 @@ export function CartPageContent() {
   const mrpTotal = resolved.reduce((sum, r) => sum + (r.product.mrp ?? r.product.price) * r.line.quantity, 0);
   const savings = mrpTotal - subtotal;
   const buddyCoinsTotal = resolved.reduce((sum, r) => sum + (r.product.buddyCoins ?? 0) * r.line.quantity, 0);
+  const couponDiscount = applied?.discountAmount ?? 0;
+  const total = Math.max(0, subtotal - couponDiscount);
 
-  function handleApplyCoupon(e: React.FormEvent) {
+  async function handleApplyCoupon(e: React.FormEvent) {
     e.preventDefault();
     if (!coupon.trim()) return;
-    setCouponMessage(
-      coupon.trim().toUpperCase() === "WELCOME10"
-        ? "Coupon applied — 10% off will be reflected at checkout."
-        : "That coupon code isn't recognized. Try WELCOME10."
-    );
+    setApplyingCoupon(true);
+    setCouponMessage(null);
+    try {
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: coupon.trim(), subtotal }),
+      });
+      const data = await res.json();
+      if (!data.valid) {
+        setApplied(null);
+        setCouponMessage(data.reason || "That coupon code isn't valid.");
+        return;
+      }
+      setApplied({ code: coupon.trim().toUpperCase(), discountAmount: data.discountAmount });
+      setCouponMessage(`Coupon applied — $${data.discountAmount.toFixed(2)} off.`);
+    } catch {
+      setCouponMessage("Couldn't validate that coupon. Try again.");
+    } finally {
+      setApplyingCoupon(false);
+    }
+  }
+
+  function handleRemoveCoupon() {
+    clearCoupon();
+    setCoupon("");
+    setCouponMessage(null);
   }
 
   return (
@@ -154,27 +181,37 @@ export function CartPageContent() {
                 </div>
               </div>
 
-              <form onSubmit={handleApplyCoupon} className="mt-4 border-t border-border pt-4">
+              <div className="mt-4 border-t border-border pt-4">
                 <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-text-muted">
                   Have a coupon?
                 </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={coupon}
-                    onChange={(e) => setCoupon(e.target.value)}
-                    placeholder="Enter code"
-                    className="w-full rounded-md border border-border-strong px-3 py-1.5 text-sm focus:border-accent focus:outline-none"
-                  />
-                  <button
-                    type="submit"
-                    className="shrink-0 rounded-md border border-border-strong px-3 text-sm font-semibold text-text-primary hover:border-accent"
-                  >
-                    Apply
-                  </button>
-                </div>
+                {applied ? (
+                  <div className="flex items-center justify-between rounded-md border border-border-strong px-3 py-1.5 text-sm">
+                    <span className="font-semibold text-accent-ink">{applied.code} applied</span>
+                    <button type="button" onClick={handleRemoveCoupon} className="text-xs font-semibold text-text-secondary hover:text-discount">
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleApplyCoupon} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={coupon}
+                      onChange={(e) => setCoupon(e.target.value)}
+                      placeholder="Enter code"
+                      className="w-full rounded-md border border-border-strong px-3 py-1.5 text-sm focus:border-accent focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={applyingCoupon}
+                      className="shrink-0 rounded-md border border-border-strong px-3 text-sm font-semibold text-text-primary hover:border-accent disabled:opacity-60"
+                    >
+                      {applyingCoupon ? "..." : "Apply"}
+                    </button>
+                  </form>
+                )}
                 {couponMessage && <p className="mt-2 text-xs text-text-secondary">{couponMessage}</p>}
-              </form>
+              </div>
 
               {buddyCoinsTotal > 0 && (
                 <div className="mt-4 flex items-center gap-2 rounded-md bg-surface-soft px-3 py-2 text-sm font-medium text-accent-ink">
@@ -183,9 +220,15 @@ export function CartPageContent() {
                 </div>
               )}
 
-              <div className="mt-4 flex justify-between border-t border-border pt-4 text-base font-bold text-text-primary">
+              {couponDiscount > 0 && (
+                <div className="mt-4 flex justify-between border-t border-border pt-4 text-sm text-price-note">
+                  <span>Coupon discount</span>
+                  <span>− ${couponDiscount.toFixed(2)}</span>
+                </div>
+              )}
+              <div className={`flex justify-between text-base font-bold text-text-primary ${couponDiscount > 0 ? "mt-2" : "mt-4 border-t border-border pt-4"}`}>
                 <span>Total</span>
-                <span>${subtotal.toFixed(2)}</span>
+                <span>${total.toFixed(2)}</span>
               </div>
 
               <Link

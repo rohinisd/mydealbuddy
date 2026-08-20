@@ -4,10 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/plp/Breadcrumb";
 import { useCart } from "@/context/CartContext";
+import { useCoupon } from "@/context/CouponContext";
 import { useProductsByIds } from "@/hooks/useProductsByIds";
 
 export function CheckoutPageContent() {
   const { lines } = useCart();
+  const { applied } = useCoupon();
   const [placed, setPlaced] = useState(false);
 
   const { products, loading } = useProductsByIds(lines.map((l) => l.productId));
@@ -16,6 +18,8 @@ export function CheckoutPageContent() {
     .map((line) => ({ line, product: productById.get(line.productId) }))
     .filter((r): r is { line: typeof lines[number]; product: NonNullable<typeof r.product> } => !!r.product);
   const subtotal = resolved.reduce((sum, r) => sum + r.product.price * r.line.quantity, 0);
+  const couponDiscount = applied?.discountAmount ?? 0;
+  const total = Math.max(0, subtotal - couponDiscount);
 
   if (loading) {
     return (
@@ -128,9 +132,15 @@ export function CheckoutPageContent() {
                 </li>
               ))}
             </ul>
-            <div className="mt-4 flex justify-between border-t border-border pt-4 text-base font-bold text-text-primary">
+            {couponDiscount > 0 && (
+              <div className="mt-4 flex justify-between border-t border-border pt-4 text-sm text-price-note">
+                <span>Coupon ({applied?.code})</span>
+                <span>− ${couponDiscount.toFixed(2)}</span>
+              </div>
+            )}
+            <div className={`flex justify-between text-base font-bold text-text-primary ${couponDiscount > 0 ? "mt-2" : "mt-4 border-t border-border pt-4"}`}>
               <span>Total</span>
-              <span>${subtotal.toFixed(2)}</span>
+              <span>${total.toFixed(2)}</span>
             </div>
           </div>
         </div>
