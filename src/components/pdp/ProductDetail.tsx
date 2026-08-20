@@ -7,6 +7,8 @@ import { CoinIcon, HeartIcon, ShareIcon, StarIcon, TagIcon, TruckIcon } from "@/
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { PRODUCT_CATEGORIES } from "@/data/categories";
+import { SHIPPING_COUNTRIES } from "@/data/countries";
+import { isValidPostalCode } from "@/lib/postal-codes";
 import { discountPct, getSku, type Product, type ProductReview } from "@/types/product";
 
 interface ShippingOption {
@@ -16,18 +18,6 @@ interface ShippingOption {
   minDays: number | null;
   maxDays: number | null;
 }
-
-// Common destination countries -- not CJ's full supported list, just enough
-// to stop the calculator silently defaulting everyone to US shipping data.
-const SHIPPING_COUNTRIES = [
-  { code: "US", label: "United States" },
-  { code: "CA", label: "Canada" },
-  { code: "GB", label: "United Kingdom" },
-  { code: "AU", label: "Australia" },
-  { code: "IN", label: "India" },
-  { code: "DE", label: "Germany" },
-  { code: "FR", label: "France" },
-];
 
 function ratingDistribution(reviews: ProductReview[]) {
   const counts = [5, 4, 3, 2, 1].map((stars) => ({
@@ -97,9 +87,13 @@ export function ProductDetail({
   async function handleCheckDelivery(e: React.FormEvent) {
     e.preventDefault();
     if (!zip.trim()) return;
+    setShippingOptions(null);
+    if (!isValidPostalCode(country, zip)) {
+      setShippingError("That doesn't look like a valid postal/ZIP code for the selected country.");
+      return;
+    }
     setCheckingDelivery(true);
     setShippingError(null);
-    setShippingOptions(null);
     try {
       const res = await fetch(
         `/api/shipping-estimate?productId=${encodeURIComponent(product.id)}&zip=${encodeURIComponent(zip.trim())}&country=${encodeURIComponent(country)}&quantity=${quantity}`
