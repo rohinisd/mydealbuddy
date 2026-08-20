@@ -17,10 +17,15 @@ interface CjFreightOption {
   totalPostageFee: number;
 }
 
-// The delivery-estimate form only ever collects a US ZIP code, so this
-// currently assumes a US destination and CJ's China warehouse as origin --
-// matches the existing UI's scope, not a general international calculator.
-export async function getShippingEstimate(productId: string, zip: string, quantity = 1): Promise<ShippingOption[]> {
+// CJ doesn't validate the zip format against endCountryCode -- passing a real
+// destination country here matters, since an unrelated country's zip/postal
+// code silently returns that other country's shipping data with no error.
+export async function getShippingEstimate(
+  productId: string,
+  zip: string,
+  countryCode: string,
+  quantity = 1
+): Promise<ShippingOption[]> {
   const token = process.env.CJ_ACCESS_TOKEN;
   if (!token) throw new Error("CJ_ACCESS_TOKEN missing from environment");
 
@@ -33,7 +38,7 @@ export async function getShippingEstimate(productId: string, zip: string, quanti
     headers: { "CJ-Access-Token": token, "Content-Type": "application/json" },
     body: JSON.stringify({
       startCountryCode: "CN",
-      endCountryCode: "US",
+      endCountryCode: countryCode,
       zip,
       products: [{ vid, quantity }],
     }),

@@ -4,14 +4,15 @@ import { getShippingEstimate } from "@/lib/cj-shipping";
 export async function GET(request: NextRequest) {
   const productId = request.nextUrl.searchParams.get("productId");
   const zip = request.nextUrl.searchParams.get("zip");
+  const country = request.nextUrl.searchParams.get("country");
   const quantity = Number(request.nextUrl.searchParams.get("quantity") || "1");
 
-  if (!productId || !zip) {
-    return NextResponse.json({ error: "productId and zip are required" }, { status: 400 });
+  if (!productId || !zip || !country) {
+    return NextResponse.json({ error: "productId, zip, and country are required" }, { status: 400 });
   }
 
   try {
-    const options = await getShippingEstimate(productId, zip, quantity);
+    const options = await getShippingEstimate(productId, zip, country, quantity);
     return NextResponse.json(options);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Shipping estimate failed";

@@ -17,6 +17,18 @@ interface ShippingOption {
   maxDays: number | null;
 }
 
+// Common destination countries -- not CJ's full supported list, just enough
+// to stop the calculator silently defaulting everyone to US shipping data.
+const SHIPPING_COUNTRIES = [
+  { code: "US", label: "United States" },
+  { code: "CA", label: "Canada" },
+  { code: "GB", label: "United Kingdom" },
+  { code: "AU", label: "Australia" },
+  { code: "IN", label: "India" },
+  { code: "DE", label: "Germany" },
+  { code: "FR", label: "France" },
+];
+
 function ratingDistribution(reviews: ProductReview[]) {
   const counts = [5, 4, 3, 2, 1].map((stars) => ({
     stars,
@@ -59,6 +71,7 @@ export function ProductDetail({
   const [selectedOption, setSelectedOption] = useState(product.options?.[0]);
   const [quantity, setQuantity] = useState(1);
   const [zip, setZip] = useState("");
+  const [country, setCountry] = useState("US");
   const [shippingOptions, setShippingOptions] = useState<ShippingOption[] | null>(null);
   const [shippingError, setShippingError] = useState<string | null>(null);
   const [checkingDelivery, setCheckingDelivery] = useState(false);
@@ -89,7 +102,7 @@ export function ProductDetail({
     setShippingOptions(null);
     try {
       const res = await fetch(
-        `/api/shipping-estimate?productId=${encodeURIComponent(product.id)}&zip=${encodeURIComponent(zip.trim())}&quantity=${quantity}`
+        `/api/shipping-estimate?productId=${encodeURIComponent(product.id)}&zip=${encodeURIComponent(zip.trim())}&country=${encodeURIComponent(country)}&quantity=${quantity}`
       );
       const data = await res.json();
       if (!res.ok) {
@@ -238,12 +251,23 @@ export function ProductDetail({
               <TruckIcon className="h-4 w-4" /> Delivery Options
             </p>
             <div className="flex gap-2">
+              <select
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                className="rounded-md border border-border-strong px-2 py-2 text-sm focus:border-accent focus:outline-none"
+              >
+                {SHIPPING_COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
               <input
                 type="text"
                 value={zip}
                 onChange={(e) => setZip(e.target.value)}
-                placeholder="Enter ZIP code"
-                className="w-40 rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                placeholder="Postal / ZIP code"
+                className="w-32 rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
               />
               <button
                 type="submit"
