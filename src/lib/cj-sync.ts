@@ -196,9 +196,52 @@ export async function syncProductByPid(pid: string, appCategorySlug: string): Pr
     }
   }
 
+  // Back-to-back CJ calls can hit the same 1 req/sec limit we saw on product/query.
+  // Reviews are supplementary (ratings display) -- don't fail the whole sync over them.
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  try {
+    await syncProductReviews(detail.pid, productDbId);
+  } catch (err) {
+    console.error(`Review sync failed for pid ${detail.pid}:`, err instanceof Error ? err.message : err);
+  }
+
   return { productDbId, pid: detail.pid, nameEn: detail.productNameEn };
+}
+
+interface CjComment {
+  commentId: number;
+  comment?: string;
+  commentUser?: string;
+  score?: number;
+  countryCode?: string;
+  commentDate?: string;
+}
+
+async function syncProductReviews(pid: string, productDbId: string): Promise<void> {
+  const data = (await cjFetch(`/product/productComments?pid=${encodeURIComponent(pid)}&pageNum=1&pageSize=50`)) as unknown as {
+    list?: CjComment[];
+  };
+  const comments = data.list || [];
+
+  await pool.query(`DELETE FROM cj_product_review WHERE product_id = $1`, [productDbId]);
+  for (const c of comments) {
+    if (typeof c.score !== "number") continue;
+    await pool.query(
+      `INSERT INTO cj_product_review (product_id, cj_comment_id, author_masked, score, body, country_code, source, commented_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'CJ',$7)
+       ON CONFLICT (cj_comment_id) DO NOTHING`,
+      [productDbId, c.commentId, c.commentUser || null, c.score, c.comment || null, c.countryCode || null, c.commentDate || null]
+    );
+  }
 }
 
 export async function setProductActive(productDbId: string, isActive: boolean): Promise<void> {
   await pool.query(`UPDATE cj_product SET is_active = $1 WHERE id = $2`, [isActive, productDbId]);
+}
+
+const VALID_BADGES = new Set(["deal", "sale", "new"]);
+
+export async function setProductBadges(productDbId: string, badges: string[]): Promise<void> {
+  const filtered = badges.filter((b) => VALID_BADGES.has(b) && b !== "new"); // "new" is auto-derived, not admin-set
+  await pool.query(`UPDATE cj_product SET badges = $1 WHERE id = $2`, [filtered, productDbId]);
 }

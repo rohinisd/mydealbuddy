@@ -2,9 +2,8 @@ import "server-only";
 import { pool } from "@/lib/db";
 import type { Product } from "@/types/product";
 
-// CJ products have no slug or star rating -- neither is synced yet (reviews
-// aren't pulled in by scripts/sync-cj-products.js). Slug is derived
-// deterministically here so it's stable across reads without needing storage.
+// Slug is derived deterministically (CJ has no concept of one) so it's
+// stable across reads without needing storage.
 function slugify(name: string, pid: string): string {
   const base = name
     .toLowerCase()
@@ -13,6 +12,9 @@ function slugify(name: string, pid: string): string {
     .slice(0, 60);
   return `${base}-${pid.slice(-6)}`;
 }
+
+const NEW_BADGE_WINDOW_DAYS = 14;
+const BUDDY_COINS_RATE = 0.05; // 5% of price, rounded
 
 interface ProductRow {
   id: string;
@@ -26,10 +28,18 @@ interface ProductRow {
   main_image_url: string | null;
   listed_count: number | null;
   sold_out: boolean | null;
+  badges: string[] | null;
+  first_synced_at: string;
+  avg_score: string | null;
+  review_count: string | null;
 }
 
 function rowToProduct(row: ProductRow, imageUrl: string | null, gallery: string[] = []): Product {
   const price = row.price_min ? Number(row.price_min) : 0;
+  const isNew = Date.now() - new Date(row.first_synced_at).getTime() < NEW_BADGE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const badges = [...(row.badges ?? []), ...(isNew ? ["new"] : [])] as NonNullable<Product["badges"]>;
+  const ratingCount = row.review_count ? Number(row.review_count) : 0;
+
   return {
     id: row.id,
     slug: slugify(row.name_en, row.pid),
@@ -45,6 +55,10 @@ function rowToProduct(row: ProductRow, imageUrl: string | null, gallery: string[
     swatchHover: "#dbe3e0",
     image: imageUrl ?? undefined,
     images: gallery.length ? gallery : undefined,
+    badges: badges.length ? badges : undefined,
+    rating: ratingCount > 0 && row.avg_score ? Number(row.avg_score) : undefined,
+    ratingCount: ratingCount > 0 ? ratingCount : undefined,
+    buddyCoins: Math.round(price * BUDDY_COINS_RATE) || undefined,
   };
 }
 
@@ -53,7 +67,10 @@ function rowToProduct(row: ProductRow, imageUrl: string | null, gallery: string[
 // without touching CJ or deleting rows that carts/wishlists may reference.
 const BASE_QUERY = `
   SELECT p.id, p.pid, p.spu, p.name_en, p.app_category_slug, p.brand,
-         p.price_min, p.price_max, p.main_image_url, p.listed_count, p.sold_out
+         p.price_min, p.price_max, p.main_image_url, p.listed_count, p.sold_out,
+         p.badges, p.first_synced_at,
+         (SELECT AVG(r.score) FROM cj_product_review r WHERE r.product_id = p.id) AS avg_score,
+         (SELECT COUNT(*) FROM cj_product_review r WHERE r.product_id = p.id) AS review_count
   FROM cj_product p
   WHERE p.is_active = true
 `;

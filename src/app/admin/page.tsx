@@ -64,6 +64,23 @@ export default function AdminPage() {
     }
   }
 
+  async function toggleBadge(product: AdminProductRow, badge: "deal" | "sale") {
+    setBusyId(product.id);
+    try {
+      const next = product.badges.includes(badge)
+        ? product.badges.filter((b) => b !== badge)
+        : [...product.badges, badge];
+      await fetch(`/api/admin/products/${product.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ badges: next }),
+      });
+      await loadProducts();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function handleLogout() {
     await fetch("/api/admin/logout", { method: "POST" });
     router.push("/admin/login");
@@ -134,6 +151,23 @@ export default function AdminPage() {
               >
                 {p.isActive ? "Active" : "Inactive"}
               </span>
+              <div className="flex shrink-0 gap-1.5">
+                {(["deal", "sale"] as const).map((badge) => (
+                  <button
+                    key={badge}
+                    type="button"
+                    disabled={busyId === p.id}
+                    onClick={() => toggleBadge(p, badge)}
+                    className={`rounded-md border px-2 py-1.5 text-xs font-semibold capitalize disabled:opacity-60 ${
+                      p.badges.includes(badge)
+                        ? "border-accent bg-accent text-white"
+                        : "border-border-strong text-text-primary hover:border-accent"
+                    }`}
+                  >
+                    {badge}
+                  </button>
+                ))}
+              </div>
               <button
                 type="button"
                 disabled={busyId === p.id}

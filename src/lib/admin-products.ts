@@ -10,12 +10,13 @@ export interface AdminProductRow {
   priceMin: number | null;
   mainImageUrl: string | null;
   isActive: boolean;
+  badges: string[];
   fetchedAt: string;
 }
 
 export async function listAllProductsForAdmin(): Promise<AdminProductRow[]> {
   const res = await pool.query(
-    `SELECT id, pid, name_en, app_category_slug, brand, price_min, main_image_url, is_active, fetched_at
+    `SELECT id, pid, name_en, app_category_slug, brand, price_min, main_image_url, is_active, badges, fetched_at
      FROM cj_product ORDER BY fetched_at DESC`
   );
   return res.rows.map((row) => ({
@@ -27,6 +28,7 @@ export async function listAllProductsForAdmin(): Promise<AdminProductRow[]> {
     priceMin: row.price_min ? Number(row.price_min) : null,
     mainImageUrl: row.main_image_url,
     isActive: row.is_active,
+    badges: row.badges ?? [],
     fetchedAt: row.fetched_at,
   }));
 }
