@@ -2,11 +2,12 @@ import "server-only";
 
 const AGENTMAIL_API_BASE = "https://api.agentmail.to";
 
-// Built against AgentMail's documented REST API (agentmail.to/docs/quickstart)
-// but NOT yet exercised against a live account -- no API key exists yet.
-// Verify this against a real send once AGENTMAIL_API_KEY / AGENTMAIL_INBOX_ID
-// are set, the same way every other external integration in this project was
-// verified against live behavior before being trusted.
+// Verified live 2026-08-24 against a real AgentMail account: created an inbox
+// via POST /inboxes, sent through this exact function, confirmed the message
+// actually arrived via GET /inboxes/{id}/messages. One real bug this caught:
+// AgentMail's inbox "id" is actually its own email address (e.g.
+// "foo@agentmail.to"), not an opaque token -- the "@" must be URL-encoded in
+// the path, which the first draft (built from docs alone) didn't do.
 async function sendEmail(to: string, subject: string, html: string): Promise<void> {
   const apiKey = process.env.AGENTMAIL_API_KEY;
   const inboxId = process.env.AGENTMAIL_INBOX_ID;
@@ -16,7 +17,7 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
     return;
   }
 
-  const res = await fetch(`${AGENTMAIL_API_BASE}/inboxes/${inboxId}/messages/send`, {
+  const res = await fetch(`${AGENTMAIL_API_BASE}/inboxes/${encodeURIComponent(inboxId)}/messages/send`, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({ to, subject, html }),
