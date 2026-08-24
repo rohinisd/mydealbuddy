@@ -8,6 +8,10 @@ import { PromoBanner } from "@/components/home/PromoBanner";
 import { getAllProducts } from "@/lib/products";
 import { getActiveHomepageBlocks } from "@/lib/homepage-content";
 
+// Without this, Next prerenders "/" once at build time and admin edits (products,
+// hero/promo/deal blocks) wouldn't show on the live site until the next deploy.
+export const revalidate = 60;
+
 export default async function Home() {
   const [products, heroSlides, promoBanners, dealCards] = await Promise.all([
     getAllProducts(),
