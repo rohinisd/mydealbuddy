@@ -14,7 +14,7 @@ function slugify(name: string, pid: string): string {
 }
 
 const NEW_BADGE_WINDOW_DAYS = 14;
-const BUDDY_COINS_RATE = 0.05; // 5% of price, rounded
+export const BUDDY_COINS_RATE = 0.05; // 5% of price, rounded
 
 interface ProductRow {
   id: string;

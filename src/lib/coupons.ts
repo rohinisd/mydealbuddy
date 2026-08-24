@@ -90,3 +90,7 @@ export async function createCoupon(input: {
 export async function setCouponActive(id: string, isActive: boolean): Promise<void> {
   await pool.query(`UPDATE coupon SET is_active = $1 WHERE id = $2`, [isActive, id]);
 }
+
+export async function incrementCouponUsage(code: string): Promise<void> {
+  await pool.query(`UPDATE coupon SET times_used = times_used + 1 WHERE code ILIKE $1`, [code.trim()]);
+}

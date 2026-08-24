@@ -1,26 +1,31 @@
-"use client";
-
+import { redirect } from "next/navigation";
 import { AccountLayout } from "@/components/account/AccountLayout";
 import { CoinIcon } from "@/components/icons/Icons";
+import { getCurrentCustomer } from "@/lib/current-customer";
+import { getBuddyCoinLedger, type BuddyCoinLedgerRow } from "@/lib/orders";
 
-const MOCK_LEDGER = [
-  { date: "Aug 12, 2026", reason: "Order #1042 earned", delta: 12 },
-  { date: "Aug 5, 2026", reason: "Redeemed at checkout", delta: -20 },
-  { date: "Jul 28, 2026", reason: "Order #1031 earned", delta: 8 },
-  { date: "Jul 20, 2026", reason: "Referral bonus — Marcus T.", delta: 50 },
-];
+export const metadata = { title: "Buddy Coins | MyDealBuddy" };
 
-export default function BuddyCoinsPage() {
-  const balance = MOCK_LEDGER.reduce((sum, row) => sum + row.delta, 78);
+const REASON_LABEL: Record<BuddyCoinLedgerRow["reason"], string> = {
+  purchase: "Earned on order",
+  referral_bonus: "Referral bonus",
+  referred_signup_bonus: "Welcome bonus (referred)",
+};
+
+function describeRow(row: BuddyCoinLedgerRow): string {
+  const label = REASON_LABEL[row.reason];
+  return row.orderNumber ? `${label} ${row.orderNumber}` : label;
+}
+
+export default async function BuddyCoinsPage() {
+  const customer = await getCurrentCustomer();
+  if (!customer) redirect("/login?next=/account/buddy-coins");
+
+  const { balance, rows } = await getBuddyCoinLedger(customer.id);
 
   return (
-    <AccountLayout title="Buddy Coins">
-      <div className="rounded-md border border-dashed border-discount bg-surface-soft px-4 py-3 text-sm text-text-secondary">
-        Preview data — real balances will read from the points ledger once the Neon-backed rewards API
-        is connected (integration map §8).
-      </div>
-
-      <div className="mt-6 flex items-center gap-3 rounded-md border border-border bg-surface-grey p-5">
+    <AccountLayout title="Buddy Coins" customerFirstName={customer.firstName}>
+      <div className="flex items-center gap-3 rounded-md border border-border bg-surface-grey p-5">
         <CoinIcon className="h-8 w-8 text-accent" />
         <div>
           <p className="text-2xl font-bold text-text-primary">{balance} Coins</p>
@@ -29,20 +34,24 @@ export default function BuddyCoinsPage() {
       </div>
 
       <h2 className="mb-3 mt-8 text-sm font-bold uppercase tracking-wide text-text-muted">History</h2>
-      <ul className="divide-y divide-border rounded-md border border-border">
-        {MOCK_LEDGER.map((row, i) => (
-          <li key={i} className="flex items-center justify-between px-4 py-3 text-sm">
-            <div>
-              <p className="font-medium text-text-primary">{row.reason}</p>
-              <p className="text-xs text-text-muted">{row.date}</p>
-            </div>
-            <span className={`font-bold ${row.delta > 0 ? "text-price-note" : "text-discount"}`}>
-              {row.delta > 0 ? "+" : ""}
-              {row.delta}
-            </span>
-          </li>
-        ))}
-      </ul>
+      {rows.length === 0 ? (
+        <p className="text-sm text-text-muted">No activity yet — place an order to start earning Buddy Coins.</p>
+      ) : (
+        <ul className="divide-y divide-border rounded-md border border-border">
+          {rows.map((row) => (
+            <li key={row.id} className="flex items-center justify-between px-4 py-3 text-sm">
+              <div>
+                <p className="font-medium text-text-primary">{describeRow(row)}</p>
+                <p className="text-xs text-text-muted">{new Date(row.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
+              </div>
+              <span className={`font-bold ${row.amount > 0 ? "text-price-note" : "text-discount"}`}>
+                {row.amount > 0 ? "+" : ""}
+                {row.amount}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </AccountLayout>
   );
 }

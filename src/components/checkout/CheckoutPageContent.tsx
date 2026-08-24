@@ -6,11 +6,24 @@ import { Breadcrumb } from "@/components/plp/Breadcrumb";
 import { useCart } from "@/context/CartContext";
 import { useCoupon } from "@/context/CouponContext";
 import { useProductsByIds } from "@/hooks/useProductsByIds";
+import { SHIPPING_COUNTRIES } from "@/data/countries";
+import type { Order } from "@/lib/orders";
 
-export function CheckoutPageContent() {
-  const { lines } = useCart();
-  const { applied } = useCoupon();
-  const [placed, setPlaced] = useState(false);
+export function CheckoutPageContent({ defaultName, defaultEmail }: { defaultName: string; defaultEmail: string }) {
+  const { lines, clear } = useCart();
+  const { applied, clear: clearCoupon } = useCoupon();
+  const [placedOrder, setPlacedOrder] = useState<Order | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [name, setName] = useState(defaultName);
+  const [email, setEmail] = useState(defaultEmail);
+  const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [province, setProvince] = useState("");
+  const [countryCode, setCountryCode] = useState("US");
+  const [zip, setZip] = useState("");
+  const [phone, setPhone] = useState("");
 
   const { products, loading } = useProductsByIds(lines.map((l) => l.productId));
   const productById = new Map(products.map((p) => [p.id, p]));
@@ -21,6 +34,34 @@ export function CheckoutPageContent() {
   const couponDiscount = applied?.discountAmount ?? 0;
   const total = Math.max(0, subtotal - couponDiscount);
 
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      const country = SHIPPING_COUNTRIES.find((c) => c.code === countryCode)?.label ?? countryCode;
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lines: lines.map((l) => ({ productId: l.productId, quantity: l.quantity, option: l.option })),
+          couponCode: applied?.code ?? null,
+          shipping: { name, email, countryCode, country, province, city, address, zip, phone },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Something went wrong placing your order.");
+        return;
+      }
+      setPlacedOrder(data.order);
+      clear();
+      clearCoupon();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="mx-auto max-w-[1280px] px-4 py-6">
@@ -30,7 +71,7 @@ export function CheckoutPageContent() {
     );
   }
 
-  if (resolved.length === 0 && !placed) {
+  if (resolved.length === 0 && !placedOrder) {
     return (
       <div className="mx-auto max-w-[1280px] px-4 py-6">
         <Breadcrumb items={[{ label: "Home", href: "/" }, { label: "Cart", href: "/cart" }, { label: "Checkout" }]} />
@@ -48,22 +89,29 @@ export function CheckoutPageContent() {
     );
   }
 
-  if (placed) {
+  if (placedOrder) {
     return (
       <div className="mx-auto max-w-[1280px] px-4 py-6">
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-20 text-center">
-          <p className="text-lg font-bold text-text-primary">This is a preview checkout</p>
+          <p className="text-lg font-bold text-text-primary">Order placed — {placedOrder.orderNumber}</p>
           <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-            Real payment processing (Stripe / PayPal) isn&apos;t connected yet — no order was actually placed
-            and no payment was charged. This screen shows what the confirmation step will look like once
-            live payment credentials are added.
+            Real payment processing (Stripe / PayPal) isn&apos;t connected yet, so no payment was charged — your
+            order is saved as pending payment. You earned {placedOrder.buddyCoinsEarned} Buddy Coins on this order.
           </p>
-          <Link
-            href="/shop"
-            className="btn-tracking mt-5 rounded-md bg-accent px-6 py-2.5 text-sm font-bold uppercase text-white hover:opacity-90"
-          >
-            Continue Shopping
-          </Link>
+          <div className="mt-5 flex gap-3">
+            <Link
+              href="/account/orders"
+              className="btn-tracking rounded-md border border-border-strong px-6 py-2.5 text-sm font-bold uppercase text-text-primary hover:border-accent"
+            >
+              View Order
+            </Link>
+            <Link
+              href="/shop"
+              className="btn-tracking rounded-md bg-accent px-6 py-2.5 text-sm font-bold uppercase text-white hover:opacity-90"
+            >
+              Continue Shopping
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -75,27 +123,73 @@ export function CheckoutPageContent() {
       <h1 className="mb-6 mt-2 text-xl font-semibold text-text-primary md:text-2xl">Checkout</h1>
 
       <div className="rounded-md border border-dashed border-discount bg-surface-soft px-4 py-3 text-sm text-text-secondary">
-        Preview mode — Stripe/PayPal aren&apos;t connected yet, so this form doesn&apos;t process a real
-        payment. It exists to validate the flow and layout ahead of wiring up live credentials.
+        Real payment processing (Stripe / PayPal) isn&apos;t connected yet, so orders placed here are saved as
+        pending payment with no charge. Everything else — the order, your Buddy Coins, and order history — is real.
       </div>
 
       <div className="mt-6 flex flex-col gap-8 lg:flex-row">
-        <form
-          className="flex-1 space-y-6"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setPlaced(true);
-          }}
-        >
+        <form className="flex-1 space-y-6" onSubmit={handleSubmit}>
           <fieldset className="rounded-md border border-border p-4">
-            <legend className="px-1 text-xs font-bold uppercase tracking-wide text-text-muted">Billing Details</legend>
+            <legend className="px-1 text-xs font-bold uppercase tracking-wide text-text-muted">Shipping Details</legend>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <input required placeholder="First name" className="rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none" />
-              <input required placeholder="Last name" className="rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none" />
-              <input required placeholder="Email address" type="email" className="rounded-md border border-border-strong px-3 py-2 text-sm sm:col-span-2 focus:border-accent focus:outline-none" />
-              <input required placeholder="Address" className="rounded-md border border-border-strong px-3 py-2 text-sm sm:col-span-2 focus:border-accent focus:outline-none" />
-              <input required placeholder="City" className="rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none" />
-              <input required placeholder="ZIP code" className="rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none" />
+              <input
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Full name"
+                className="rounded-md border border-border-strong px-3 py-2 text-sm sm:col-span-2 focus:border-accent focus:outline-none"
+              />
+              <input
+                required
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email address"
+                className="rounded-md border border-border-strong px-3 py-2 text-sm sm:col-span-2 focus:border-accent focus:outline-none"
+              />
+              <input
+                required
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Address"
+                className="rounded-md border border-border-strong px-3 py-2 text-sm sm:col-span-2 focus:border-accent focus:outline-none"
+              />
+              <input
+                required
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="City"
+                className="rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
+              />
+              <input
+                value={province}
+                onChange={(e) => setProvince(e.target.value)}
+                placeholder="Province / State"
+                className="rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
+              />
+              <select
+                value={countryCode}
+                onChange={(e) => setCountryCode(e.target.value)}
+                className="rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
+              >
+                {SHIPPING_COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={zip}
+                onChange={(e) => setZip(e.target.value)}
+                placeholder="ZIP / postal code"
+                className="rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
+              />
+              <input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Phone (optional)"
+                className="rounded-md border border-border-strong px-3 py-2 text-sm sm:col-span-2 focus:border-accent focus:outline-none"
+              />
             </div>
           </fieldset>
 
@@ -111,11 +205,14 @@ export function CheckoutPageContent() {
             </div>
           </fieldset>
 
+          {error && <p className="text-sm text-discount">{error}</p>}
+
           <button
             type="submit"
-            className="btn-tracking w-full rounded-md bg-accent py-3 text-sm font-bold uppercase text-white hover:opacity-90"
+            disabled={submitting}
+            className="btn-tracking w-full rounded-md bg-accent py-3 text-sm font-bold uppercase text-white hover:opacity-90 disabled:opacity-60"
           >
-            Place Order (Preview)
+            {submitting ? "Placing Order..." : "Place Order"}
           </button>
         </form>
 
