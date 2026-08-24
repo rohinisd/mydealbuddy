@@ -98,6 +98,9 @@ export default function AdminPage() {
           <Link href="/admin/orders" className="text-sm font-semibold text-text-secondary hover:text-accent">
             Orders →
           </Link>
+          <Link href="/admin/homepage" className="text-sm font-semibold text-text-secondary hover:text-accent">
+            Homepage →
+          </Link>
           <button onClick={handleLogout} className="text-sm font-semibold text-text-secondary hover:text-accent">
             Log out
           </button>
