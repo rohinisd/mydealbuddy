@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentCustomer } from "@/lib/current-customer";
 import { placeOrder, PlaceOrderError } from "@/lib/orders";
+import { sendOrderConfirmationEmail } from "@/lib/email";
+import { clearCustomerCart } from "@/lib/cart-sync";
 
 export async function POST(request: NextRequest) {
   const customer = await getCurrentCustomer();
@@ -45,6 +47,12 @@ export async function POST(request: NextRequest) {
         phone: typeof shipping.phone === "string" ? shipping.phone : undefined,
       },
     });
+
+    // Best-effort side effects -- a flaky email provider or a stray cart-sync
+    // row should never fail an order that already committed successfully.
+    await clearCustomerCart(customer.id).catch((err) => console.error("Failed to clear synced cart:", err));
+    sendOrderConfirmationEmail(shipping.email, order).catch((err) => console.error("Failed to send order confirmation email:", err));
+
     return NextResponse.json({ ok: true, order });
   } catch (err) {
     if (err instanceof PlaceOrderError) {

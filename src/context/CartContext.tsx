@@ -27,6 +27,7 @@ function sameLine(a: CartLine, productId: string, option?: string) {
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [lines, setLines] = useState<CartLine[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [customerId, setCustomerId] = useState<string | null>(null);
 
   useEffect(() => {
     // State must start empty to match server-rendered HTML, then sync from
@@ -40,12 +41,32 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       // ignore malformed/unavailable storage
     }
     setHydrated(true);
+
+    // Logged-in-only: mirrors the cart server-side purely to power
+    // cart-abandonment email detection (see src/lib/cart-sync.ts) — the
+    // localStorage copy above stays the source of truth for rendering.
+    fetch("/api/account/me")
+      .then((r) => r.json())
+      .then((d) => setCustomerId(d.customer?.id ?? null))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(lines));
   }, [lines, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated || !customerId) return;
+    const timer = setTimeout(() => {
+      fetch("/api/account/cart", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lines }),
+      }).catch(() => {});
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [lines, hydrated, customerId]);
 
   const addItem = useCallback((productId: string, option?: string, quantity = 1) => {
     setLines((prev) => {

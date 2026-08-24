@@ -39,3 +39,54 @@ export async function sendVerificationEmail(to: string, token: string): Promise<
      <p>This link expires in 24 hours.</p>`
   );
 }
+
+export interface OrderConfirmationLine {
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export async function sendOrderConfirmationEmail(
+  to: string,
+  order: { orderNumber: string; total: number; buddyCoinsEarned: number; lines: OrderConfirmationLine[] }
+): Promise<void> {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const rows = order.lines
+    .map(
+      (l) =>
+        `<tr><td>${l.productName} × ${l.quantity}</td><td style="text-align:right">$${(l.unitPrice * l.quantity).toFixed(2)}</td></tr>`
+    )
+    .join("");
+  await sendEmail(
+    to,
+    `Order confirmed — ${order.orderNumber}`,
+    `<p>Thanks for your order! Here's a summary of ${order.orderNumber}:</p>
+     <table style="width:100%;border-collapse:collapse">${rows}</table>
+     <p><strong>Total: $${order.total.toFixed(2)}</strong></p>
+     <p>You earned ${order.buddyCoinsEarned} Buddy Coins on this order.</p>
+     <p><a href="${siteUrl}/account/orders">View your order</a></p>`
+  );
+}
+
+export interface CartAbandonmentLine {
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export async function sendCartAbandonmentEmail(to: string, lines: CartAbandonmentLine[]): Promise<void> {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const rows = lines
+    .map(
+      (l) =>
+        `<tr><td>${l.productName} × ${l.quantity}</td><td style="text-align:right">$${(l.unitPrice * l.quantity).toFixed(2)}</td></tr>`
+    )
+    .join("");
+  await sendEmail(
+    to,
+    "You left something in your cart",
+    `<p>Still thinking it over? Your cart is waiting for you:</p>
+     <table style="width:100%;border-collapse:collapse">${rows}</table>
+     <p><a href="${siteUrl}/cart">Return to your cart</a></p>`
+  );
+}
