@@ -32,6 +32,8 @@ export interface ProductReview {
   rating: number;
   date: string;
   text: string;
+  /** True for a real MyDealBuddy customer who purchased the product; absent for CJ-synced reviews. */
+  verified?: boolean;
 }
 
 export function discountPct(price: number, mrp?: number): number | undefined {

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Breadcrumb } from "@/components/plp/Breadcrumb";
 import { ProductCard } from "@/components/product/ProductCard";
 import { CoinIcon, HeartIcon, ShareIcon, StarIcon, TagIcon, TruckIcon } from "@/components/icons/Icons";
+import { ReviewForm } from "@/components/pdp/ReviewForm";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { PRODUCT_CATEGORIES } from "@/data/categories";
@@ -384,12 +385,19 @@ export function ProductDetail({
                   {review.rating.toFixed(1)} <StarIcon className="h-3 w-3" />
                 </span>
                 <span className="text-sm font-semibold text-text-primary">{review.author}</span>
+                {review.verified && (
+                  <span className="rounded-full bg-surface-soft px-2 py-0.5 text-[10px] font-semibold text-accent-ink">
+                    Verified Purchase
+                  </span>
+                )}
                 {review.date && <span className="text-xs text-text-muted">· {review.date}</span>}
               </div>
               <p className="mt-1.5 text-sm text-text-secondary">{review.text}</p>
             </li>
           ))}
         </ul>
+
+        <ReviewForm productId={product.id} />
       </div>
 
       {/* Similar products */}

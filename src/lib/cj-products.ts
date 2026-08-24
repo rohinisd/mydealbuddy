@@ -65,12 +65,23 @@ function rowToProduct(row: ProductRow, imageUrl: string | null, gallery: string[
 // Storefront-facing queries only ever see active products -- deactivating a
 // product in the admin panel (src/lib/admin-products.ts) hides it here
 // without touching CJ or deleting rows that carts/wishlists may reference.
+// avg_score/review_count blend CJ-synced reviews with real customer reviews
+// (customer_product_review) -- a real review should move the shown rating
+// exactly like a CJ one does.
 const BASE_QUERY = `
   SELECT p.id, p.pid, p.spu, p.name_en, p.app_category_slug, p.brand,
          p.price_min, p.price_max, p.main_image_url, p.listed_count, p.sold_out,
          p.badges, p.first_synced_at,
-         (SELECT AVG(r.score) FROM cj_product_review r WHERE r.product_id = p.id) AS avg_score,
-         (SELECT COUNT(*) FROM cj_product_review r WHERE r.product_id = p.id) AS review_count
+         (SELECT AVG(score) FROM (
+            SELECT score FROM cj_product_review WHERE product_id = p.id AND score IS NOT NULL
+            UNION ALL
+            SELECT rating AS score FROM customer_product_review WHERE product_id = p.id
+          ) combined_scores) AS avg_score,
+         (SELECT COUNT(*) FROM (
+            SELECT 1 AS n FROM cj_product_review WHERE product_id = p.id
+            UNION ALL
+            SELECT 1 AS n FROM customer_product_review WHERE product_id = p.id
+          ) combined_counts) AS review_count
   FROM cj_product p
   WHERE p.is_active = true
 `;
@@ -137,20 +148,47 @@ export async function getProductDescription(productId: string): Promise<string |
 }
 
 export async function getProductReviews(productId: string, limit = 20): Promise<ProductReview[]> {
-  const res = await pool.query(
-    `SELECT id, author_masked, score, body, commented_at
-     FROM cj_product_review WHERE product_id = $1 ORDER BY commented_at DESC NULLS LAST LIMIT $2`,
-    [productId, limit]
-  );
-  return res.rows
+  const [cjRes, customerRes] = await Promise.all([
+    pool.query(
+      `SELECT id, author_masked, score, body, commented_at
+       FROM cj_product_review WHERE product_id = $1 ORDER BY commented_at DESC NULLS LAST LIMIT $2`,
+      [productId, limit]
+    ),
+    pool.query(
+      `SELECT r.id, r.rating, r.body, r.created_at, c.first_name
+       FROM customer_product_review r
+       JOIN customer c ON c.id = r.customer_id
+       WHERE r.product_id = $1
+       ORDER BY r.created_at DESC LIMIT $2`,
+      [productId, limit]
+    ),
+  ]);
+
+  const cjReviews: (ProductReview & { sortKey: number })[] = cjRes.rows
     .filter((r) => r.body)
     .map((r) => ({
-      id: String(r.id),
+      id: `cj-${r.id}`,
       author: r.author_masked || "Verified Buyer",
       rating: r.score,
       date: r.commented_at ? new Date(r.commented_at).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "",
       text: r.body,
+      sortKey: r.commented_at ? new Date(r.commented_at).getTime() : 0,
     }));
+
+  const customerReviews: (ProductReview & { sortKey: number })[] = customerRes.rows.map((r) => ({
+    id: `c-${r.id}`,
+    author: r.first_name as string,
+    rating: Number(r.rating),
+    date: new Date(r.created_at).toLocaleDateString(undefined, { month: "short", year: "numeric" }),
+    text: r.body,
+    verified: true,
+    sortKey: new Date(r.created_at).getTime(),
+  }));
+
+  return [...cjReviews, ...customerReviews]
+    .sort((a, b) => b.sortKey - a.sortKey)
+    .slice(0, limit)
+    .map(({ sortKey: _sortKey, ...review }) => review);
 }
 
 export async function getRelatedProducts(product: Product, limit = 4): Promise<Product[]> {
