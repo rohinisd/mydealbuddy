@@ -4,6 +4,7 @@ import { getProductsByIds } from "@/lib/products";
 import { validateCoupon, incrementCouponUsage } from "@/lib/coupons";
 import { BUDDY_COINS_RATE } from "@/lib/cj-products";
 import { findCustomerById } from "@/lib/customers";
+import { getCartShippingEstimate } from "@/lib/cart-shipping";
 
 export const REFERRAL_BONUS_COINS = 50; // credited to the referrer
 export const REFERRED_SIGNUP_BONUS_COINS = 25; // credited to the new customer
@@ -96,10 +97,21 @@ export async function placeOrder(input: PlaceOrderInput): Promise<Order> {
     couponCode = result.coupon?.code ?? input.couponCode;
   }
 
-  // Real shipping-cost consolidation across a multi-seller cart isn't wired in
-  // yet (the existing /api/shipping-estimate is per-product) -- orders are
-  // recorded with $0 shipping until that's built.
-  const shippingAmount = 0;
+  // Never trust a client-submitted shipping cost -- same principle as prices
+  // and coupons above. Always recompute fresh here, even if the checkout UI
+  // already showed a live estimate moments ago.
+  if (!input.shipping.zip?.trim()) {
+    throw new PlaceOrderError("A ZIP/postal code is required to calculate shipping.");
+  }
+  const shippingResult = await getCartShippingEstimate(
+    resolvedLines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
+    input.shipping.countryCode,
+    input.shipping.zip
+  );
+  if (!shippingResult.shippable) {
+    throw new PlaceOrderError("One or more items in your cart can't be shipped to that address.");
+  }
+  const shippingAmount = shippingResult.total;
   const total = Math.max(0, subtotal - discountAmount) + shippingAmount;
   // Guests have no account to credit Buddy Coins to -- 0, not a phantom
   // amount that implies they earned something they didn't.

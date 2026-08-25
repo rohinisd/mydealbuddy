@@ -7,6 +7,7 @@ import { useCart } from "@/context/CartContext";
 import { useCoupon } from "@/context/CouponContext";
 import { useProductsByIds } from "@/hooks/useProductsByIds";
 import { SHIPPING_COUNTRIES } from "@/data/countries";
+import { isValidPostalCode } from "@/lib/postal-codes";
 import type { Order } from "@/lib/orders";
 import type { CustomerAddress } from "@/lib/customer-addresses";
 
@@ -37,6 +38,10 @@ export function CheckoutPageContent({
   const [selectedAddressId, setSelectedAddressId] = useState("");
   const [saveAddress, setSaveAddress] = useState(false);
 
+  const [shippingCost, setShippingCost] = useState<number | null>(null);
+  const [shippingCalculating, setShippingCalculating] = useState(false);
+  const [shippingError, setShippingError] = useState<string | null>(null);
+
   useEffect(() => {
     if (isGuest) return;
     fetch("/api/account/addresses")
@@ -61,6 +66,60 @@ export function CheckoutPageContent({
     setPhone(a.phone ?? "");
   }
 
+  const linesKey = lines.map((l) => `${l.productId}:${l.quantity}`).join(",");
+
+  useEffect(() => {
+    const trimmedZip = zip.trim();
+    if (!countryCode || !trimmedZip || lines.length === 0 || !isValidPostalCode(countryCode, trimmedZip)) {
+      setShippingCost(null);
+      setShippingError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setShippingCalculating(true);
+    setShippingError(null);
+    const timer = setTimeout(() => {
+      fetch("/api/checkout/shipping-estimate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lines: lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
+          countryCode,
+          zip: trimmedZip,
+        }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (cancelled) return;
+          if (data.error) {
+            setShippingCost(null);
+            setShippingError(data.error);
+          } else if (!data.shippable) {
+            setShippingCost(null);
+            setShippingError("Some items in your cart can't be shipped to this address.");
+          } else {
+            setShippingCost(data.total);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setShippingCost(null);
+            setShippingError("Couldn't calculate shipping. Try again.");
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setShippingCalculating(false);
+        });
+    }, 800);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- linesKey is the stable dependency, lines itself changes reference every render
+  }, [countryCode, zip, linesKey]);
+
   const { products, loading } = useProductsByIds(lines.map((l) => l.productId));
   const productById = new Map(products.map((p) => [p.id, p]));
   const resolved = lines
@@ -68,7 +127,8 @@ export function CheckoutPageContent({
     .filter((r): r is { line: typeof lines[number]; product: NonNullable<typeof r.product> } => !!r.product);
   const subtotal = resolved.reduce((sum, r) => sum + r.product.price * r.line.quantity, 0);
   const couponDiscount = applied?.discountAmount ?? 0;
-  const total = Math.max(0, subtotal - couponDiscount);
+  const total = Math.max(0, subtotal - couponDiscount) + (shippingCost ?? 0);
+  const canSubmit = !submitting && !shippingCalculating && shippingCost !== null && !shippingError;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -269,6 +329,7 @@ export function CheckoutPageContent({
                 ))}
               </select>
               <input
+                required
                 value={zip}
                 onChange={(e) => setZip(e.target.value)}
                 placeholder="ZIP / postal code"
@@ -306,10 +367,18 @@ export function CheckoutPageContent({
 
           <button
             type="submit"
-            disabled={submitting}
+            disabled={!canSubmit}
             className="btn-tracking w-full rounded-md bg-accent py-3 text-sm font-bold uppercase text-white hover:opacity-90 disabled:opacity-60"
           >
-            {submitting ? "Placing Order..." : "Place Order"}
+            {submitting
+              ? "Placing Order..."
+              : shippingCalculating
+                ? "Calculating Shipping..."
+                : shippingError
+                  ? "Can't Ship to This Address"
+                  : shippingCost === null
+                    ? "Enter Your Address to Continue"
+                    : "Place Order"}
           </button>
         </form>
 
@@ -326,13 +395,26 @@ export function CheckoutPageContent({
                 </li>
               ))}
             </ul>
+            <div className="mt-4 flex justify-between border-t border-border pt-4 text-sm text-text-secondary">
+              <span>Shipping</span>
+              <span>
+                {shippingCalculating
+                  ? "Calculating..."
+                  : shippingError
+                    ? "—"
+                    : shippingCost !== null
+                      ? `$${shippingCost.toFixed(2)}`
+                      : "Enter address"}
+              </span>
+            </div>
+            {shippingError && <p className="mt-1 text-xs text-discount">{shippingError}</p>}
             {couponDiscount > 0 && (
-              <div className="mt-4 flex justify-between border-t border-border pt-4 text-sm text-price-note">
+              <div className="mt-2 flex justify-between text-sm text-price-note">
                 <span>Coupon ({applied?.code})</span>
                 <span>− ${couponDiscount.toFixed(2)}</span>
               </div>
             )}
-            <div className={`flex justify-between text-base font-bold text-text-primary ${couponDiscount > 0 ? "mt-2" : "mt-4 border-t border-border pt-4"}`}>
+            <div className="mt-2 flex justify-between border-t border-border pt-4 text-base font-bold text-text-primary">
               <span>Total</span>
               <span>${total.toFixed(2)}</span>
             </div>
