@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     if (customer) {
       await clearCustomerCart(customer.id).catch((err) => console.error("Failed to clear synced cart:", err));
     }
-    sendOrderConfirmationEmail(order.shippingEmail, order).catch((err) =>
+    sendOrderConfirmationEmail(order.shippingEmail, order, "PayPal").catch((err) =>
       console.error("Failed to send order confirmation email:", err)
     );
 

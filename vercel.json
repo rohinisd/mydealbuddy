@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/cart-abandonment",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/paypal-cleanup",
+      "schedule": "30 14 * * *"
     }
   ]
 }

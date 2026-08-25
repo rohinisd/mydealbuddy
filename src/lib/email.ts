@@ -48,7 +48,8 @@ export interface OrderConfirmationLine {
 
 export async function sendOrderConfirmationEmail(
   to: string,
-  order: { orderNumber: string; total: number; buddyCoinsEarned: number; lines: OrderConfirmationLine[] }
+  order: { orderNumber: string; total: number; buddyCoinsEarned: number; lines: OrderConfirmationLine[] },
+  paymentMethod?: string
 ): Promise<void> {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
   const rows = order.lines
@@ -63,6 +64,7 @@ export async function sendOrderConfirmationEmail(
     `<p>Thanks for your order! Here's a summary of ${order.orderNumber}:</p>
      <table style="width:100%;border-collapse:collapse">${rows}</table>
      <p><strong>Total: $${order.total.toFixed(2)}</strong></p>
+     ${paymentMethod ? `<p>Paid via ${paymentMethod}.</p>` : ""}
      <p>You earned ${order.buddyCoinsEarned} Buddy Coins on this order.</p>
      <p><a href="${siteUrl}/account/orders">View your order</a></p>`
   );

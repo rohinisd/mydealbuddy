@@ -68,3 +68,17 @@ export async function capturePendingPaypalOrder(paypalOrderId: string): Promise<
   await pool.query(`DELETE FROM paypal_pending_order WHERE paypal_order_id = $1`, [paypalOrderId]);
   return order;
 }
+
+/**
+ * A real PayPal approval + capture happens within minutes; anything still
+ * pending after 24h means the buyer abandoned checkout. Without this the
+ * table grows forever off checkout abandonment (the majority case for any
+ * storefront), since only a successful capture deletes its own row.
+ */
+export async function cleanupStalePendingPaypalOrders(maxAgeHours = 24): Promise<number> {
+  const res = await pool.query(
+    `DELETE FROM paypal_pending_order WHERE created_at < now() - ($1 || ' hours')::interval`,
+    [maxAgeHours]
+  );
+  return res.rowCount ?? 0;
+}

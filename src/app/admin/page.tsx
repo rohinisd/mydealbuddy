@@ -95,8 +95,11 @@ export default function AdminPage() {
           <Link href="/admin/coupons" className="text-sm font-semibold text-text-secondary hover:text-accent">
             Coupons →
           </Link>
+          <Link href="/admin/customer-orders" className="text-sm font-semibold text-text-secondary hover:text-accent">
+            Customer Orders →
+          </Link>
           <Link href="/admin/orders" className="text-sm font-semibold text-text-secondary hover:text-accent">
-            Orders →
+            CJ Sandbox →
           </Link>
           <Link href="/admin/homepage" className="text-sm font-semibold text-text-secondary hover:text-accent">
             Homepage →

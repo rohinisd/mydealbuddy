@@ -20,7 +20,7 @@ export interface OrderLine {
 export interface Order {
   id: string;
   orderNumber: string;
-  status: "pending_payment" | "paid" | "cancelled";
+  status: "pending_payment" | "paid" | "cancelled" | "refunded";
   subtotal: number;
   discountAmount: number;
   shippingAmount: number;
@@ -28,11 +28,15 @@ export interface Order {
   buddyCoinsEarned: number;
   couponCode: string | null;
   shippingEmail: string;
+  paypalOrderId: string | null;
+  paypalCaptureId: string | null;
+  paypalRefundId: string | null;
+  refundedAt: string | null;
   createdAt: string;
   lines: OrderLine[];
 }
 
-function rowToOrder(row: Record<string, unknown>, lines: OrderLine[]): Order {
+export function rowToOrder(row: Record<string, unknown>, lines: OrderLine[]): Order {
   return {
     id: String(row.id),
     orderNumber: row.order_number as string,
@@ -44,6 +48,10 @@ function rowToOrder(row: Record<string, unknown>, lines: OrderLine[]): Order {
     buddyCoinsEarned: Number(row.buddy_coins_earned),
     couponCode: (row.coupon_code as string | null) ?? null,
     shippingEmail: row.shipping_email as string,
+    paypalOrderId: (row.paypal_order_id as string | null) ?? null,
+    paypalCaptureId: (row.paypal_capture_id as string | null) ?? null,
+    paypalRefundId: (row.paypal_refund_id as string | null) ?? null,
+    refundedAt: row.refunded_at ? new Date(row.refunded_at as string).toISOString() : null,
     createdAt: new Date(row.created_at as string).toISOString(),
     lines,
   };
@@ -283,6 +291,51 @@ export async function listOrdersForCustomer(customerId: string): Promise<Order[]
   }
 
   return orders.map((row) => rowToOrder(row, linesByOrderId.get(String(row.id)) ?? []));
+}
+
+/** Unscoped, most-recent-first -- for the admin order list, callers must enforce their own auth. */
+export async function listAllOrdersForAdmin(limit = 200): Promise<Order[]> {
+  const orderRes = await pool.query(`SELECT * FROM customer_order ORDER BY created_at DESC LIMIT $1`, [limit]);
+  const orders = orderRes.rows;
+  if (orders.length === 0) return [];
+
+  const lineRes = await pool.query(`SELECT * FROM customer_order_line WHERE order_id = ANY($1) ORDER BY id`, [
+    orders.map((o) => o.id),
+  ]);
+  const linesByOrderId = new Map<string, OrderLine[]>();
+  for (const row of lineRes.rows) {
+    const key = String(row.order_id);
+    const line: OrderLine = {
+      productId: String(row.product_id),
+      productName: row.product_name,
+      optionLabel: row.option_label,
+      unitPrice: Number(row.unit_price),
+      quantity: Number(row.quantity),
+    };
+    linesByOrderId.set(key, [...(linesByOrderId.get(key) ?? []), line]);
+  }
+
+  return orders.map((row) => rowToOrder(row, linesByOrderId.get(String(row.id)) ?? []));
+}
+
+/** Unscoped lookup by id -- for admin use only, callers must enforce their own auth. */
+export async function getOrderById(orderId: string): Promise<Order | null> {
+  const orderRes = await pool.query(`SELECT * FROM customer_order WHERE id = $1`, [orderId]);
+  const orderRow = orderRes.rows[0];
+  if (!orderRow) return null;
+
+  const lineRes = await pool.query(
+    `SELECT * FROM customer_order_line WHERE order_id = $1 ORDER BY id`,
+    [orderRow.id]
+  );
+  const lines: OrderLine[] = lineRes.rows.map((row) => ({
+    productId: String(row.product_id),
+    productName: row.product_name,
+    optionLabel: row.option_label,
+    unitPrice: Number(row.unit_price),
+    quantity: Number(row.quantity),
+  }));
+  return rowToOrder(orderRow, lines);
 }
 
 export interface BuddyCoinLedgerRow {
