@@ -23,7 +23,11 @@ export default async function ReferralsPage() {
 
       <CopyReferralLink referralLink={referralLink} />
 
-      <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3">
+      <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="rounded-md border border-border p-4 text-center">
+          <p className="text-2xl font-bold text-text-primary">{stats.totalClicks}</p>
+          <p className="mt-1 text-xs text-text-muted">Link Clicks</p>
+        </div>
         <div className="rounded-md border border-border p-4 text-center">
           <p className="text-2xl font-bold text-text-primary">{stats.friendsReferred}</p>
           <p className="mt-1 text-xs text-text-muted">Friends Referred</p>

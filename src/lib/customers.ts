@@ -2,6 +2,7 @@ import "server-only";
 import { randomBytes } from "crypto";
 import { pool } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { getReferralClickCount } from "@/lib/referral-clicks";
 
 export interface Customer {
   id: string;
@@ -118,6 +119,7 @@ export async function verifyEmailToken(token: string): Promise<{ ok: boolean; re
 
 export interface ReferralStats {
   referralCode: string;
+  totalClicks: number;
   friendsReferred: number;
   coinsEarnedFromReferrals: number;
 }
@@ -126,16 +128,18 @@ export async function getReferralStats(customerId: string): Promise<ReferralStat
   const customer = await findCustomerById(customerId);
   if (!customer) throw new Error("Customer not found");
 
-  const [countRes, coinsRes] = await Promise.all([
+  const [countRes, coinsRes, clickCount] = await Promise.all([
     pool.query(`SELECT COUNT(*) AS n FROM customer WHERE referred_by_customer_id = $1`, [customerId]),
     pool.query(
       `SELECT COALESCE(SUM(amount), 0) AS total FROM buddy_coin_ledger WHERE customer_id = $1 AND reason = 'referral_bonus'`,
       [customerId]
     ),
+    getReferralClickCount(customer.referralCode),
   ]);
 
   return {
     referralCode: customer.referralCode,
+    totalClicks: clickCount,
     friendsReferred: Number(countRes.rows[0].n),
     coinsEarnedFromReferrals: Number(coinsRes.rows[0].total),
   };

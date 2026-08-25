@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -9,6 +9,17 @@ export function SignupForm() {
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/my-account";
   const ref = searchParams.get("ref") || "";
+
+  const clickRecorded = useRef(false);
+  useEffect(() => {
+    if (!ref || clickRecorded.current) return;
+    clickRecorded.current = true;
+    fetch("/api/referrals/click", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: ref }),
+    }).catch(() => {});
+  }, [ref]);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
