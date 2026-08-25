@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { Breadcrumb } from "@/components/plp/Breadcrumb";
 import { useCart } from "@/context/CartContext";
 import { useCoupon } from "@/context/CouponContext";
@@ -23,8 +24,8 @@ export function CheckoutPageContent({
   const { lines, clear } = useCart();
   const { applied, clear: clearCoupon } = useCoupon();
   const [placedOrder, setPlacedOrder] = useState<Order | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const [name, setName] = useState(defaultName);
   const [email, setEmail] = useState(defaultEmail);
@@ -128,41 +129,67 @@ export function CheckoutPageContent({
   const subtotal = resolved.reduce((sum, r) => sum + r.product.price * r.line.quantity, 0);
   const couponDiscount = applied?.discountAmount ?? 0;
   const total = Math.max(0, subtotal - couponDiscount) + (shippingCost ?? 0);
-  const canSubmit = !submitting && !shippingCalculating && shippingCost !== null && !shippingError;
+  const readyForPayment = !shippingCalculating && shippingCost !== null && !shippingError;
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
+  function currentShippingPayload() {
+    const country = SHIPPING_COUNTRIES.find((c) => c.code === countryCode)?.label ?? countryCode;
+    return {
+      lines: lines.map((l) => ({ productId: l.productId, quantity: l.quantity, option: l.option })),
+      couponCode: applied?.code ?? null,
+      shipping: { name, email, countryCode, country, province, city, address, zip, phone },
+    };
+  }
+
+  async function handleCreatePaypalOrder(): Promise<string> {
+    if (!formRef.current?.reportValidity()) {
+      throw new Error("Please fill in all required fields.");
+    }
     setError(null);
-    try {
-      const country = SHIPPING_COUNTRIES.find((c) => c.code === countryCode)?.label ?? countryCode;
-      const res = await fetch("/api/checkout", {
+    const res = await fetch("/api/checkout/paypal/create-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(currentShippingPayload()),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || "Something went wrong starting PayPal checkout.");
+      throw new Error(data.error || "PayPal create order failed");
+    }
+    return data.paypalOrderId as string;
+  }
+
+  async function handleApprovePaypalOrder(paypalOrderId: string) {
+    setError(null);
+    const res = await fetch("/api/checkout/paypal/capture-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paypalOrderId }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || "Something went wrong confirming your PayPal payment.");
+      return;
+    }
+    setPlacedOrder(data.order);
+    clear();
+    clearCoupon();
+
+    if (!isGuest && saveAddress) {
+      const { shipping } = currentShippingPayload();
+      fetch("/api/account/addresses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          lines: lines.map((l) => ({ productId: l.productId, quantity: l.quantity, option: l.option })),
-          couponCode: applied?.code ?? null,
-          shipping: { name, email, countryCode, country, province, city, address, zip, phone },
+          fullName: shipping.name,
+          phone: shipping.phone,
+          countryCode: shipping.countryCode,
+          country: shipping.country,
+          province: shipping.province,
+          city: shipping.city,
+          addressLine: shipping.address,
+          zip: shipping.zip,
         }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Something went wrong placing your order.");
-        return;
-      }
-      setPlacedOrder(data.order);
-      clear();
-      clearCoupon();
-
-      if (!isGuest && saveAddress) {
-        fetch("/api/account/addresses", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fullName: name, phone, countryCode, country, province, city, addressLine: address, zip }),
-        }).catch(() => {});
-      }
-    } finally {
-      setSubmitting(false);
+      }).catch(() => {});
     }
   }
 
@@ -199,8 +226,7 @@ export function CheckoutPageContent({
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-20 text-center">
           <p className="text-lg font-bold text-text-primary">Order placed — {placedOrder.orderNumber}</p>
           <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-            Real payment processing (Stripe / PayPal) isn&apos;t connected yet, so no payment was charged — your
-            order is saved as pending payment.{" "}
+            Paid ${placedOrder.total.toFixed(2)} via PayPal.{" "}
             {placedOrder.buddyCoinsEarned > 0
               ? `You earned ${placedOrder.buddyCoinsEarned} Buddy Coins on this order.`
               : "Create an account next time to earn Buddy Coins on your orders."}
@@ -239,8 +265,8 @@ export function CheckoutPageContent({
       <h1 className="mb-6 mt-2 text-xl font-semibold text-text-primary md:text-2xl">Checkout</h1>
 
       <div className="rounded-md border border-dashed border-discount bg-surface-soft px-4 py-3 text-sm text-text-secondary">
-        Real payment processing (Stripe / PayPal) isn&apos;t connected yet, so orders placed here are saved as
-        pending payment with no charge. Everything else — the order, your Buddy Coins, and order history — is real.
+        Payment runs through PayPal&apos;s sandbox right now — real API behavior, but no real money moves. Credit
+        card via Stripe isn&apos;t connected yet.
       </div>
 
       {isGuest && (
@@ -258,7 +284,7 @@ export function CheckoutPageContent({
       )}
 
       <div className="mt-6 flex flex-col gap-8 lg:flex-row">
-        <form className="flex-1 space-y-6" onSubmit={handleSubmit}>
+        <form ref={formRef} className="flex-1 space-y-6" onSubmit={(e) => e.preventDefault()}>
           <fieldset className="rounded-md border border-border p-4">
             <legend className="px-1 text-xs font-bold uppercase tracking-wide text-text-muted">Shipping Details</legend>
 
@@ -353,33 +379,28 @@ export function CheckoutPageContent({
 
           <fieldset className="rounded-md border border-border p-4">
             <legend className="px-1 text-xs font-bold uppercase tracking-wide text-text-muted">Payment Method</legend>
-            <div className="space-y-2 text-sm">
-              <label className="flex items-center gap-2 text-text-muted">
-                <input type="radio" name="payment" disabled /> Credit / Debit Card (Stripe) — connect credentials to enable
-              </label>
-              <label className="flex items-center gap-2 text-text-muted">
-                <input type="radio" name="payment" disabled /> PayPal — connect credentials to enable
-              </label>
-            </div>
+            <p className="mb-3 text-sm text-text-muted">Credit / Debit Card (Stripe) — connect credentials to enable</p>
+
+            {shippingCalculating ? (
+              <p className="text-sm text-text-muted">Calculating shipping...</p>
+            ) : shippingError ? (
+              <p className="text-sm text-discount">Can&apos;t ship to this address.</p>
+            ) : shippingCost === null ? (
+              <p className="text-sm text-text-muted">Enter your shipping address above to pay with PayPal.</p>
+            ) : (
+              <PayPalScriptProvider options={{ clientId: process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || "", currency: "USD" }}>
+                <PayPalButtons
+                  disabled={!readyForPayment}
+                  style={{ layout: "vertical" }}
+                  createOrder={handleCreatePaypalOrder}
+                  onApprove={async (data) => handleApprovePaypalOrder(data.orderID)}
+                  onError={(err) => setError(`PayPal error: ${String(err)}`)}
+                />
+              </PayPalScriptProvider>
+            )}
           </fieldset>
 
           {error && <p className="text-sm text-discount">{error}</p>}
-
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className="btn-tracking w-full rounded-md bg-accent py-3 text-sm font-bold uppercase text-white hover:opacity-90 disabled:opacity-60"
-          >
-            {submitting
-              ? "Placing Order..."
-              : shippingCalculating
-                ? "Calculating Shipping..."
-                : shippingError
-                  ? "Can't Ship to This Address"
-                  : shippingCost === null
-                    ? "Enter Your Address to Continue"
-                    : "Place Order"}
-          </button>
         </form>
 
         <div className="w-full shrink-0 lg:w-80">

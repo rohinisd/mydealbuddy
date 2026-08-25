@@ -27,6 +27,7 @@ export interface Order {
   total: number;
   buddyCoinsEarned: number;
   couponCode: string | null;
+  shippingEmail: string;
   createdAt: string;
   lines: OrderLine[];
 }
@@ -42,39 +43,148 @@ function rowToOrder(row: Record<string, unknown>, lines: OrderLine[]): Order {
     total: Number(row.total),
     buddyCoinsEarned: Number(row.buddy_coins_earned),
     couponCode: (row.coupon_code as string | null) ?? null,
+    shippingEmail: row.shipping_email as string,
     createdAt: new Date(row.created_at as string).toISOString(),
     lines,
   };
 }
 
-export interface PlaceOrderInput {
-  /** Null for guest checkout -- Buddy Coins/referral crediting are skipped since there's no account to credit. */
+export interface ShippingInput {
+  name: string;
+  email: string;
+  countryCode: string;
+  country: string;
+  province?: string;
+  city: string;
+  address: string;
+  zip?: string;
+  phone?: string;
+}
+
+interface ResolvedOrder {
   customerId: string | null;
-  lines: { productId: string; quantity: number; option?: string }[];
-  couponCode?: string | null;
-  shipping: {
-    name: string;
-    email: string;
-    countryCode: string;
-    country: string;
-    province?: string;
-    city: string;
-    address: string;
-    zip?: string;
-    phone?: string;
-  };
+  resolvedLines: OrderLine[];
+  subtotal: number;
+  discountAmount: number;
+  couponCode: string | null;
+  shippingAmount: number;
+  total: number;
+  buddyCoinsEarned: number;
+  shipping: ShippingInput;
+  status: "pending_payment" | "paid";
+  paypalOrderId?: string;
+  paypalCaptureId?: string;
 }
 
 export class PlaceOrderError extends Error {}
 
-export async function placeOrder(input: PlaceOrderInput): Promise<Order> {
+/** Shared DB write path for both the no-payment flow and the PayPal-captured flow. */
+async function insertOrderRecord(resolved: ResolvedOrder): Promise<Order> {
+  const orderNumber = `MDB-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const orderRes = await client.query(
+      `INSERT INTO customer_order
+         (customer_id, order_number, status, subtotal, discount_amount, shipping_amount, total, buddy_coins_earned,
+          coupon_code, shipping_name, shipping_email, shipping_country_code, shipping_country, shipping_province,
+          shipping_city, shipping_address, shipping_zip, shipping_phone, paypal_order_id, paypal_capture_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+       RETURNING *`,
+      [
+        resolved.customerId,
+        orderNumber,
+        resolved.status,
+        resolved.subtotal,
+        resolved.discountAmount,
+        resolved.shippingAmount,
+        resolved.total,
+        resolved.buddyCoinsEarned,
+        resolved.couponCode,
+        resolved.shipping.name,
+        resolved.shipping.email,
+        resolved.shipping.countryCode,
+        resolved.shipping.country,
+        resolved.shipping.province || null,
+        resolved.shipping.city,
+        resolved.shipping.address,
+        resolved.shipping.zip || null,
+        resolved.shipping.phone || null,
+        resolved.paypalOrderId ?? null,
+        resolved.paypalCaptureId ?? null,
+      ]
+    );
+    const orderRow = orderRes.rows[0];
+
+    for (const line of resolved.resolvedLines) {
+      await client.query(
+        `INSERT INTO customer_order_line (order_id, product_id, product_name, option_label, unit_price, quantity)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [orderRow.id, line.productId, line.productName, line.optionLabel, line.unitPrice, line.quantity]
+      );
+    }
+
+    if (resolved.buddyCoinsEarned > 0 && resolved.customerId) {
+      await client.query(
+        `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1,$2,'purchase',$3)`,
+        [resolved.customerId, resolved.buddyCoinsEarned, orderRow.id]
+      );
+    }
+
+    if (resolved.couponCode) {
+      await incrementCouponUsage(resolved.couponCode);
+    }
+
+    // Referral reward triggers on the referred customer's first order, per the
+    // product doc ("registers" + "completes minimum qualified purchase") --
+    // not applicable to guest orders, there's no account to have been referred.
+    if (resolved.customerId) {
+      const orderCountRes = await client.query(`SELECT COUNT(*) AS n FROM customer_order WHERE customer_id = $1`, [
+        resolved.customerId,
+      ]);
+      const isFirstOrder = Number(orderCountRes.rows[0].n) === 1;
+      if (isFirstOrder) {
+        const customer = await findCustomerById(resolved.customerId);
+        if (customer?.referredByCustomerId) {
+          await client.query(
+            `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1,$2,'referral_bonus',$3)`,
+            [customer.referredByCustomerId, REFERRAL_BONUS_COINS, orderRow.id]
+          );
+          await client.query(
+            `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1,$2,'referred_signup_bonus',$3)`,
+            [resolved.customerId, REFERRED_SIGNUP_BONUS_COINS, orderRow.id]
+          );
+        }
+      }
+    }
+
+    await client.query("COMMIT");
+    return rowToOrder(orderRow, resolved.resolvedLines);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export interface ResolveOrderInput {
+  customerId: string | null;
+  lines: { productId: string; quantity: number; option?: string }[];
+  couponCode?: string | null;
+  shipping: ShippingInput;
+}
+
+/** Re-fetches real prices/coupon/shipping server-side -- never trusts client-submitted amounts. */
+async function resolveOrder(input: ResolveOrderInput): Promise<Omit<ResolvedOrder, "status" | "paypalOrderId" | "paypalCaptureId">> {
   if (input.lines.length === 0) throw new PlaceOrderError("Your cart is empty.");
 
-  // Never trust client-submitted prices -- re-fetch current prices server-side.
   const products = await getProductsByIds(input.lines.map((l) => l.productId));
   const productById = new Map(products.map((p) => [p.id, p]));
 
-  const resolvedLines = input.lines.map((line) => {
+  const resolvedLines: OrderLine[] = input.lines.map((line) => {
     const product = productById.get(line.productId);
     if (!product) throw new PlaceOrderError(`A product in your cart is no longer available.`);
     return {
@@ -97,9 +207,6 @@ export async function placeOrder(input: PlaceOrderInput): Promise<Order> {
     couponCode = result.coupon?.code ?? input.couponCode;
   }
 
-  // Never trust a client-submitted shipping cost -- same principle as prices
-  // and coupons above. Always recompute fresh here, even if the checkout UI
-  // already showed a live estimate moments ago.
   if (!input.shipping.zip?.trim()) {
     throw new PlaceOrderError("A ZIP/postal code is required to calculate shipping.");
   }
@@ -119,95 +226,37 @@ export async function placeOrder(input: PlaceOrderInput): Promise<Order> {
     ? resolvedLines.reduce((sum, l) => sum + Math.round(l.unitPrice * BUDDY_COINS_RATE) * l.quantity, 0)
     : 0;
 
-  const orderNumber = `MDB-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    const orderRes = await client.query(
-      `INSERT INTO customer_order
-         (customer_id, order_number, subtotal, discount_amount, shipping_amount, total, buddy_coins_earned,
-          coupon_code, shipping_name, shipping_email, shipping_country_code, shipping_country, shipping_province,
-          shipping_city, shipping_address, shipping_zip, shipping_phone)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-       RETURNING *`,
-      [
-        input.customerId,
-        orderNumber,
-        subtotal,
-        discountAmount,
-        shippingAmount,
-        total,
-        buddyCoinsEarned,
-        couponCode,
-        input.shipping.name,
-        input.shipping.email,
-        input.shipping.countryCode,
-        input.shipping.country,
-        input.shipping.province || null,
-        input.shipping.city,
-        input.shipping.address,
-        input.shipping.zip || null,
-        input.shipping.phone || null,
-      ]
-    );
-    const orderRow = orderRes.rows[0];
-
-    for (const line of resolvedLines) {
-      await client.query(
-        `INSERT INTO customer_order_line (order_id, product_id, product_name, option_label, unit_price, quantity)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [orderRow.id, line.productId, line.productName, line.optionLabel, line.unitPrice, line.quantity]
-      );
-    }
-
-    if (buddyCoinsEarned > 0 && input.customerId) {
-      await client.query(
-        `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1,$2,'purchase',$3)`,
-        [input.customerId, buddyCoinsEarned, orderRow.id]
-      );
-    }
-
-    if (couponCode) {
-      await incrementCouponUsage(couponCode);
-    }
-
-    // Referral reward triggers on the referred customer's first order, per the
-    // product doc ("registers" + "completes minimum qualified purchase") --
-    // not applicable to guest orders, there's no account to have been referred.
-    if (input.customerId) {
-      const orderCountRes = await client.query(`SELECT COUNT(*) AS n FROM customer_order WHERE customer_id = $1`, [
-        input.customerId,
-      ]);
-      const isFirstOrder = Number(orderCountRes.rows[0].n) === 1;
-      if (isFirstOrder) {
-        const customer = await findCustomerById(input.customerId);
-        if (customer?.referredByCustomerId) {
-          await client.query(
-            `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1,$2,'referral_bonus',$3)`,
-            [customer.referredByCustomerId, REFERRAL_BONUS_COINS, orderRow.id]
-          );
-          await client.query(
-            `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1,$2,'referred_signup_bonus',$3)`,
-            [input.customerId, REFERRED_SIGNUP_BONUS_COINS, orderRow.id]
-          );
-        }
-      }
-    }
-
-    await client.query("COMMIT");
-    return rowToOrder(
-      orderRow,
-      resolvedLines.map((l) => ({ ...l }))
-    );
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
-  } finally {
-    client.release();
-  }
+  return {
+    customerId: input.customerId,
+    resolvedLines,
+    subtotal,
+    discountAmount,
+    couponCode,
+    shippingAmount,
+    total,
+    buddyCoinsEarned,
+    shipping: input.shipping,
+  };
 }
+
+export type PlaceOrderInput = ResolveOrderInput;
+
+/** No-payment flow (kept for internal/testing use -- checkout itself now routes through PayPal). */
+export async function placeOrder(input: PlaceOrderInput): Promise<Order> {
+  const resolved = await resolveOrder(input);
+  return insertOrderRecord({ ...resolved, status: "pending_payment" });
+}
+
+/** Used by the PayPal capture flow -- amounts are already resolved and stored server-side, not recomputed. */
+export async function insertPaidOrder(
+  resolved: Omit<ResolvedOrder, "status" | "paypalOrderId" | "paypalCaptureId">,
+  paypalOrderId: string,
+  paypalCaptureId: string
+): Promise<Order> {
+  return insertOrderRecord({ ...resolved, status: "paid", paypalOrderId, paypalCaptureId });
+}
+
+export { resolveOrder };
 
 export async function listOrdersForCustomer(customerId: string): Promise<Order[]> {
   const orderRes = await pool.query(`SELECT * FROM customer_order WHERE customer_id = $1 ORDER BY created_at DESC`, [
