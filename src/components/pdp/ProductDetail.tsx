@@ -48,14 +48,22 @@ function GalleryTile({ color, image, index }: { color: string; image?: string; i
   );
 }
 
+interface ProductVideo {
+  url: string;
+  coverUrl: string | null;
+  source: "cj" | "admin";
+}
+
 export function ProductDetail({
   product,
   related,
   reviews,
+  video,
 }: {
   product: Product;
   related: Product[];
   reviews: ProductReview[];
+  video: ProductVideo | null;
 }) {
   const { addItem } = useCart();
   const { has, toggle } = useWishlist();
@@ -348,6 +356,20 @@ export function ProductDetail({
           </div>
         </dl>
       </div>
+
+      {/* Product video */}
+      {video && (
+        <div className="mt-12 max-w-md border-t border-border pt-8">
+          <h2 className="mb-4 text-lg font-bold text-text-primary">Product Video</h2>
+          <video
+            controls
+            poster={video.coverUrl ?? undefined}
+            className="w-full rounded-md border border-border"
+          >
+            <source src={video.url} type="video/mp4" />
+          </video>
+        </div>
+      )}
 
       {/* Reviews */}
       <div id="reviews" className="mt-12 max-w-3xl scroll-mt-24 border-t border-border pt-8">
