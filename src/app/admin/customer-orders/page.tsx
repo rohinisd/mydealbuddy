@@ -30,7 +30,12 @@ export default function AdminCustomerOrdersPage() {
   }, []);
 
   async function handleRefund(order: Order) {
-    if (!confirm(`Refund ${order.orderNumber} for $${order.total.toFixed(2)} via PayPal? This cannot be undone.`)) return;
+    if (
+      !confirm(
+        `Refund ${order.orderNumber} for $${order.total.toFixed(2)} via PayPal? This also claws back any Buddy Coins credited for this order. Cannot be undone.`
+      )
+    )
+      return;
     setBusyId(order.id);
     setMessage(null);
     try {
