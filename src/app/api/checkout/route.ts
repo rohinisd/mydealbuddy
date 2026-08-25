@@ -5,10 +5,8 @@ import { sendOrderConfirmationEmail } from "@/lib/email";
 import { clearCustomerCart } from "@/lib/cart-sync";
 
 export async function POST(request: NextRequest) {
+  // Guest checkout: customer is null for anyone not logged in, and that's fine.
   const customer = await getCurrentCustomer();
-  if (!customer) {
-    return NextResponse.json({ error: "You must be logged in to place an order." }, { status: 401 });
-  }
 
   const body = await request.json().catch(() => null);
   const lines = Array.isArray(body?.lines) ? body.lines : [];
@@ -32,7 +30,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const order = await placeOrder({
-      customerId: customer.id,
+      customerId: customer?.id ?? null,
       lines: validLines,
       couponCode: typeof body?.couponCode === "string" ? body.couponCode : null,
       shipping: {
@@ -50,7 +48,9 @@ export async function POST(request: NextRequest) {
 
     // Best-effort side effects -- a flaky email provider or a stray cart-sync
     // row should never fail an order that already committed successfully.
-    await clearCustomerCart(customer.id).catch((err) => console.error("Failed to clear synced cart:", err));
+    if (customer) {
+      await clearCustomerCart(customer.id).catch((err) => console.error("Failed to clear synced cart:", err));
+    }
     sendOrderConfirmationEmail(shipping.email, order).catch((err) => console.error("Failed to send order confirmation email:", err));
 
     return NextResponse.json({ ok: true, order });

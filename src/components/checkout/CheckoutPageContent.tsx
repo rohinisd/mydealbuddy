@@ -9,7 +9,15 @@ import { useProductsByIds } from "@/hooks/useProductsByIds";
 import { SHIPPING_COUNTRIES } from "@/data/countries";
 import type { Order } from "@/lib/orders";
 
-export function CheckoutPageContent({ defaultName, defaultEmail }: { defaultName: string; defaultEmail: string }) {
+export function CheckoutPageContent({
+  isGuest,
+  defaultName,
+  defaultEmail,
+}: {
+  isGuest: boolean;
+  defaultName: string;
+  defaultEmail: string;
+}) {
   const { lines, clear } = useCart();
   const { applied, clear: clearCoupon } = useCoupon();
   const [placedOrder, setPlacedOrder] = useState<Order | null>(null);
@@ -96,15 +104,27 @@ export function CheckoutPageContent({ defaultName, defaultEmail }: { defaultName
           <p className="text-lg font-bold text-text-primary">Order placed — {placedOrder.orderNumber}</p>
           <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
             Real payment processing (Stripe / PayPal) isn&apos;t connected yet, so no payment was charged — your
-            order is saved as pending payment. You earned {placedOrder.buddyCoinsEarned} Buddy Coins on this order.
+            order is saved as pending payment.{" "}
+            {placedOrder.buddyCoinsEarned > 0
+              ? `You earned ${placedOrder.buddyCoinsEarned} Buddy Coins on this order.`
+              : "Create an account next time to earn Buddy Coins on your orders."}
           </p>
           <div className="mt-5 flex gap-3">
-            <Link
-              href="/account/orders"
-              className="btn-tracking rounded-md border border-border-strong px-6 py-2.5 text-sm font-bold uppercase text-text-primary hover:border-accent"
-            >
-              View Order
-            </Link>
+            {isGuest ? (
+              <Link
+                href={`/signup?next=${encodeURIComponent("/my-account")}`}
+                className="btn-tracking rounded-md border border-border-strong px-6 py-2.5 text-sm font-bold uppercase text-text-primary hover:border-accent"
+              >
+                Create Account
+              </Link>
+            ) : (
+              <Link
+                href="/account/orders"
+                className="btn-tracking rounded-md border border-border-strong px-6 py-2.5 text-sm font-bold uppercase text-text-primary hover:border-accent"
+              >
+                View Order
+              </Link>
+            )}
             <Link
               href="/shop"
               className="btn-tracking rounded-md bg-accent px-6 py-2.5 text-sm font-bold uppercase text-white hover:opacity-90"
@@ -126,6 +146,20 @@ export function CheckoutPageContent({ defaultName, defaultEmail }: { defaultName
         Real payment processing (Stripe / PayPal) isn&apos;t connected yet, so orders placed here are saved as
         pending payment with no charge. Everything else — the order, your Buddy Coins, and order history — is real.
       </div>
+
+      {isGuest && (
+        <div className="mt-3 rounded-md border border-border bg-surface-grey px-4 py-3 text-sm text-text-secondary">
+          Checking out as a guest.{" "}
+          <Link href={`/login?next=${encodeURIComponent("/checkout")}`} className="font-semibold text-accent hover:underline">
+            Log in
+          </Link>{" "}
+          or{" "}
+          <Link href={`/signup?next=${encodeURIComponent("/checkout")}`} className="font-semibold text-accent hover:underline">
+            create an account
+          </Link>{" "}
+          to earn Buddy Coins and track this order.
+        </div>
+      )}
 
       <div className="mt-6 flex flex-col gap-8 lg:flex-row">
         <form className="flex-1 space-y-6" onSubmit={handleSubmit}>

@@ -47,7 +47,8 @@ function rowToOrder(row: Record<string, unknown>, lines: OrderLine[]): Order {
 }
 
 export interface PlaceOrderInput {
-  customerId: string;
+  /** Null for guest checkout -- Buddy Coins/referral crediting are skipped since there's no account to credit. */
+  customerId: string | null;
   lines: { productId: string; quantity: number; option?: string }[];
   couponCode?: string | null;
   shipping: {
@@ -100,7 +101,11 @@ export async function placeOrder(input: PlaceOrderInput): Promise<Order> {
   // recorded with $0 shipping until that's built.
   const shippingAmount = 0;
   const total = Math.max(0, subtotal - discountAmount) + shippingAmount;
-  const buddyCoinsEarned = resolvedLines.reduce((sum, l) => sum + Math.round(l.unitPrice * BUDDY_COINS_RATE) * l.quantity, 0);
+  // Guests have no account to credit Buddy Coins to -- 0, not a phantom
+  // amount that implies they earned something they didn't.
+  const buddyCoinsEarned = input.customerId
+    ? resolvedLines.reduce((sum, l) => sum + Math.round(l.unitPrice * BUDDY_COINS_RATE) * l.quantity, 0)
+    : 0;
 
   const orderNumber = `MDB-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -145,7 +150,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<Order> {
       );
     }
 
-    if (buddyCoinsEarned > 0) {
+    if (buddyCoinsEarned > 0 && input.customerId) {
       await client.query(
         `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1,$2,'purchase',$3)`,
         [input.customerId, buddyCoinsEarned, orderRow.id]
@@ -157,22 +162,25 @@ export async function placeOrder(input: PlaceOrderInput): Promise<Order> {
     }
 
     // Referral reward triggers on the referred customer's first order, per the
-    // product doc ("registers" + "completes minimum qualified purchase").
-    const orderCountRes = await client.query(`SELECT COUNT(*) AS n FROM customer_order WHERE customer_id = $1`, [
-      input.customerId,
-    ]);
-    const isFirstOrder = Number(orderCountRes.rows[0].n) === 1;
-    if (isFirstOrder) {
-      const customer = await findCustomerById(input.customerId);
-      if (customer?.referredByCustomerId) {
-        await client.query(
-          `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1,$2,'referral_bonus',$3)`,
-          [customer.referredByCustomerId, REFERRAL_BONUS_COINS, orderRow.id]
-        );
-        await client.query(
-          `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1,$2,'referred_signup_bonus',$3)`,
-          [input.customerId, REFERRED_SIGNUP_BONUS_COINS, orderRow.id]
-        );
+    // product doc ("registers" + "completes minimum qualified purchase") --
+    // not applicable to guest orders, there's no account to have been referred.
+    if (input.customerId) {
+      const orderCountRes = await client.query(`SELECT COUNT(*) AS n FROM customer_order WHERE customer_id = $1`, [
+        input.customerId,
+      ]);
+      const isFirstOrder = Number(orderCountRes.rows[0].n) === 1;
+      if (isFirstOrder) {
+        const customer = await findCustomerById(input.customerId);
+        if (customer?.referredByCustomerId) {
+          await client.query(
+            `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1,$2,'referral_bonus',$3)`,
+            [customer.referredByCustomerId, REFERRAL_BONUS_COINS, orderRow.id]
+          );
+          await client.query(
+            `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1,$2,'referred_signup_bonus',$3)`,
+            [input.customerId, REFERRED_SIGNUP_BONUS_COINS, orderRow.id]
+          );
+        }
       }
     }
 
