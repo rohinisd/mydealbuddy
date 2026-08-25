@@ -9,12 +9,13 @@ import { Breadcrumb } from "@/components/plp/Breadcrumb";
 const NAV_LINKS = [
   { label: "Overview", href: "/my-account" },
   { label: "Orders", href: "/account/orders" },
+  { label: "Addresses", href: "/account/addresses" },
   { label: "Wishlist", href: "/wishlist" },
   { label: "Buddy Coins", href: "/account/buddy-coins" },
   { label: "Referrals", href: "/account/referrals" },
 ];
 
-const COMING_SOON = ["Addresses", "Coupons", "Profile", "Saved Payments"];
+const COMING_SOON = ["Coupons", "Profile", "Saved Payments"];
 
 export function AccountLayout({
   title,

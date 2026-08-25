@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/plp/Breadcrumb";
 import { useCart } from "@/context/CartContext";
@@ -8,6 +8,7 @@ import { useCoupon } from "@/context/CouponContext";
 import { useProductsByIds } from "@/hooks/useProductsByIds";
 import { SHIPPING_COUNTRIES } from "@/data/countries";
 import type { Order } from "@/lib/orders";
+import type { CustomerAddress } from "@/lib/customer-addresses";
 
 export function CheckoutPageContent({
   isGuest,
@@ -32,6 +33,33 @@ export function CheckoutPageContent({
   const [countryCode, setCountryCode] = useState("US");
   const [zip, setZip] = useState("");
   const [phone, setPhone] = useState("");
+  const [savedAddresses, setSavedAddresses] = useState<CustomerAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState("");
+  const [saveAddress, setSaveAddress] = useState(false);
+
+  useEffect(() => {
+    if (isGuest) return;
+    fetch("/api/account/addresses")
+      .then((r) => r.json())
+      .then((data: CustomerAddress[]) => {
+        setSavedAddresses(data);
+        const def = data.find((a) => a.isDefault);
+        if (def) applyAddress(def);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time load on mount
+  }, [isGuest]);
+
+  function applyAddress(a: CustomerAddress) {
+    setSelectedAddressId(a.id);
+    setName(a.fullName);
+    setAddress(a.addressLine);
+    setCity(a.city);
+    setProvince(a.province ?? "");
+    setCountryCode(a.countryCode);
+    setZip(a.zip ?? "");
+    setPhone(a.phone ?? "");
+  }
 
   const { products, loading } = useProductsByIds(lines.map((l) => l.productId));
   const productById = new Map(products.map((p) => [p.id, p]));
@@ -65,6 +93,14 @@ export function CheckoutPageContent({
       setPlacedOrder(data.order);
       clear();
       clearCoupon();
+
+      if (!isGuest && saveAddress) {
+        fetch("/api/account/addresses", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fullName: name, phone, countryCode, country, province, city, addressLine: address, zip }),
+        }).catch(() => {});
+      }
     } finally {
       setSubmitting(false);
     }
@@ -165,6 +201,26 @@ export function CheckoutPageContent({
         <form className="flex-1 space-y-6" onSubmit={handleSubmit}>
           <fieldset className="rounded-md border border-border p-4">
             <legend className="px-1 text-xs font-bold uppercase tracking-wide text-text-muted">Shipping Details</legend>
+
+            {savedAddresses.length > 0 && (
+              <select
+                value={selectedAddressId}
+                onChange={(e) => {
+                  const a = savedAddresses.find((addr) => addr.id === e.target.value);
+                  if (a) applyAddress(a);
+                }}
+                className="mb-3 w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
+              >
+                <option value="">Use a saved address...</option>
+                {savedAddresses.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label ? `${a.label} — ` : ""}
+                    {a.fullName}, {a.addressLine}, {a.city}
+                  </option>
+                ))}
+              </select>
+            )}
+
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <input
                 required
@@ -225,6 +281,13 @@ export function CheckoutPageContent({
                 className="rounded-md border border-border-strong px-3 py-2 text-sm sm:col-span-2 focus:border-accent focus:outline-none"
               />
             </div>
+
+            {!isGuest && (
+              <label className="mt-3 flex items-center gap-2 text-sm text-text-secondary">
+                <input type="checkbox" checked={saveAddress} onChange={(e) => setSaveAddress(e.target.checked)} />
+                Save this address to my account
+              </label>
+            )}
           </fieldset>
 
           <fieldset className="rounded-md border border-border p-4">
