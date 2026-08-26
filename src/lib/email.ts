@@ -1,31 +1,29 @@
 import "server-only";
 
-const AGENTMAIL_API_BASE = "https://api.agentmail.to";
+const RESEND_API_BASE = "https://api.resend.com";
 
-// Verified live 2026-08-24 against a real AgentMail account: created an inbox
-// via POST /inboxes, sent through this exact function, confirmed the message
-// actually arrived via GET /inboxes/{id}/messages. One real bug this caught:
-// AgentMail's inbox "id" is actually its own email address (e.g.
-// "foo@agentmail.to"), not an opaque token -- the "@" must be URL-encoded in
-// the path, which the first draft (built from docs alone) didn't do.
+// Switched from AgentMail 2026-08-26 -- AgentMail is built for AI agents that
+// send AND receive mail (real inboxes); this app only ever sends one-way
+// transactional email, so a plain transactional API is a much cheaper fit
+// (Resend's free tier: 3,000/mo, 100/day vs AgentMail's $20/mo paywall).
 async function sendEmail(to: string, subject: string, html: string): Promise<void> {
-  const apiKey = process.env.AGENTMAIL_API_KEY;
-  const inboxId = process.env.AGENTMAIL_INBOX_ID;
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM_EMAIL;
 
-  if (!apiKey || !inboxId) {
-    console.warn(`[email] AGENTMAIL_API_KEY/AGENTMAIL_INBOX_ID not set -- skipping send. Would have sent to ${to}: ${subject}`);
+  if (!apiKey || !from) {
+    console.warn(`[email] RESEND_API_KEY/RESEND_FROM_EMAIL not set -- skipping send. Would have sent to ${to}: ${subject}`);
     return;
   }
 
-  const res = await fetch(`${AGENTMAIL_API_BASE}/inboxes/${encodeURIComponent(inboxId)}/messages/send`, {
+  const res = await fetch(`${RESEND_API_BASE}/emails`, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ to, subject, html }),
+    body: JSON.stringify({ from, to, subject, html }),
   });
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`AgentMail send failed (${res.status}): ${body}`);
+    throw new Error(`Resend send failed (${res.status}): ${body}`);
   }
 }
 
