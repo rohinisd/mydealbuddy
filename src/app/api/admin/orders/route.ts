@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createTestOrder } from "@/lib/cj-orders";
+import { createCjOrder } from "@/lib/cj-orders";
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await createTestOrder({
+    const result = await createCjOrder({
       productDbId: body.productDbId,
       quantity: Number(body.quantity),
       logisticName: body.logisticName,

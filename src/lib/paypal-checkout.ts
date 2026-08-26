@@ -2,6 +2,7 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { resolveOrder, insertPaidOrder, type ResolveOrderInput, type Order } from "@/lib/orders";
 import { createPaypalOrder, capturePaypalOrder } from "@/lib/paypal";
+import { fulfillOrderWithCj } from "@/lib/cj-fulfillment";
 
 export async function createPendingPaypalOrder(input: ResolveOrderInput): Promise<{ paypalOrderId: string; total: number }> {
   const resolved = await resolveOrder(input);
@@ -66,6 +67,16 @@ export async function capturePendingPaypalOrder(paypalOrderId: string): Promise<
   );
 
   await pool.query(`DELETE FROM paypal_pending_order WHERE paypal_order_id = $1`, [paypalOrderId]);
+
+  // Payment already succeeded -- a CJ failure here must never fail checkout
+  // for the customer. fulfillOrderWithCj records per-line failures for
+  // admin visibility/retry rather than throwing.
+  try {
+    await fulfillOrderWithCj(order, pending.shipping_json);
+  } catch (err) {
+    console.error(`Unexpected error sourcing order ${order.orderNumber} from CJ:`, err);
+  }
+
   return order;
 }
 

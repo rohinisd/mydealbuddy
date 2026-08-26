@@ -22,7 +22,7 @@ async function cjFetch(path: string, opts: RequestInit = {}): Promise<Record<str
   return data.data;
 }
 
-export interface CreateTestOrderInput {
+export interface CreateCjOrderInput {
   productDbId: string;
   quantity: number;
   logisticName: string;
@@ -60,7 +60,7 @@ async function getVidForProduct(productDbId: string): Promise<string> {
 /** Always sandbox-gated (see sandboxFlag) and always explicit about which
  * CJ store the order belongs to -- CJ defaults to the account's "default API
  * store" when storeName is omitted, which is NOT this app's store. */
-export async function createTestOrder(input: CreateTestOrderInput): Promise<CjOrderResult> {
+export async function createCjOrder(input: CreateCjOrderInput): Promise<CjOrderResult> {
   const vid = await getVidForProduct(input.productDbId);
   const isSandbox = sandboxFlag();
   const orderNumber = `MDB-${isSandbox ? "TEST-" : ""}${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
