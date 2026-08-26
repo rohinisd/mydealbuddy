@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { AccountLayout } from "@/components/account/AccountLayout";
 import { CopyReferralLink } from "@/components/account/CopyReferralLink";
+import { ShareMenu } from "@/components/shared/ShareMenu";
 import { getCurrentCustomer } from "@/lib/current-customer";
 import { getReferralStats } from "@/lib/customers";
 import { REFERRAL_BONUS_COINS } from "@/lib/orders";
@@ -21,7 +22,16 @@ export default async function ReferralsPage() {
         Share your link — when a friend signs up and places their first order, you both earn Buddy Coins.
       </p>
 
-      <CopyReferralLink referralLink={referralLink} />
+      <div className="flex items-start gap-2">
+        <div className="flex-1">
+          <CopyReferralLink referralLink={referralLink} />
+        </div>
+        <ShareMenu
+          url={referralLink}
+          title="Save on your next order with my MyDealBuddy referral link"
+          className="mt-3 flex shrink-0 items-center justify-center rounded-md border border-border-strong px-3 py-2 text-text-secondary hover:border-accent hover:text-accent"
+        />
+      </div>
 
       <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div className="rounded-md border border-border p-4 text-center">

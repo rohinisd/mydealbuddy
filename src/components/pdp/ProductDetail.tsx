@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { Breadcrumb } from "@/components/plp/Breadcrumb";
 import { ProductCard } from "@/components/product/ProductCard";
-import { CoinIcon, HeartIcon, ShareIcon, StarIcon, TagIcon, TruckIcon } from "@/components/icons/Icons";
+import { CoinIcon, HeartIcon, StarIcon, TagIcon, TruckIcon } from "@/components/icons/Icons";
+import { ShareMenu } from "@/components/shared/ShareMenu";
 import { ReviewForm } from "@/components/pdp/ReviewForm";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
@@ -228,18 +229,11 @@ export function ProductDetail({
               <HeartIcon filled={wishlisted} className={`h-4 w-4 ${wishlisted ? "text-rose-500" : ""}`} />
               Wishlist
             </button>
-            <button
-              type="button"
+            <ShareMenu
+              url={`${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/product/${product.slug}`}
+              title={product.name}
               className="flex items-center justify-center rounded-md border border-border-strong px-3 text-text-secondary hover:border-accent hover:text-accent"
-              aria-label="Share"
-              onClick={() => {
-                if (typeof navigator !== "undefined" && navigator.share) {
-                  navigator.share({ title: product.name, url: window.location.href }).catch(() => {});
-                }
-              }}
-            >
-              <ShareIcon className="h-4 w-4" />
-            </button>
+            />
           </div>
 
           {product.buddyCoins && (
