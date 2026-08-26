@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 
 export function SignupForm() {
   const router = useRouter();
@@ -59,6 +60,12 @@ export function SignupForm() {
           after your first order.
         </p>
       )}
+      <GoogleSignInButton next={next} refCode={ref} />
+      <div className="my-4 flex items-center gap-3 text-xs uppercase text-text-muted">
+        <span className="h-px flex-1 bg-border" />
+        or
+        <span className="h-px flex-1 bg-border" />
+      </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="flex gap-3">
           <input

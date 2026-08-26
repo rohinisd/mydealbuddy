@@ -56,20 +56,35 @@ export async function getCustomerByReferralCode(code: string): Promise<Customer 
   return res.rows[0] ? rowToCustomer(res.rows[0]) : null;
 }
 
+export async function findCustomerByGoogleId(googleId: string): Promise<Customer | null> {
+  const res = await pool.query(`SELECT * FROM customer WHERE google_id = $1`, [googleId]);
+  return res.rows[0] ? rowToCustomer(res.rows[0]) : null;
+}
+
+/** Links an existing email/password account to a Google identity, so future Google sign-ins land on the same account. */
+export async function linkGoogleId(customerId: string, googleId: string): Promise<void> {
+  await pool.query(
+    `UPDATE customer SET google_id = $1, email_verified_at = COALESCE(email_verified_at, now()) WHERE id = $2`,
+    [googleId, customerId]
+  );
+}
+
 export interface CreateCustomerInput {
   email: string;
-  password: string;
+  password?: string | null;
   firstName: string;
   lastName: string;
   referredByCustomerId?: string | null;
+  googleId?: string | null;
+  emailVerified?: boolean;
 }
 
 export async function createCustomer(input: CreateCustomerInput): Promise<Customer> {
-  const passwordHash = await hashPassword(input.password);
+  const passwordHash = input.password ? await hashPassword(input.password) : null;
   const referralCode = await generateUniqueReferralCode();
   const res = await pool.query(
-    `INSERT INTO customer (email, password_hash, first_name, last_name, referral_code, referred_by_customer_id)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    `INSERT INTO customer (email, password_hash, first_name, last_name, referral_code, referred_by_customer_id, google_id, email_verified_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
     [
       input.email.trim().toLowerCase(),
       passwordHash,
@@ -77,6 +92,8 @@ export async function createCustomer(input: CreateCustomerInput): Promise<Custom
       input.lastName.trim(),
       referralCode,
       input.referredByCustomerId ?? null,
+      input.googleId ?? null,
+      input.emailVerified ? new Date() : null,
     ]
   );
   return rowToCustomer(res.rows[0]);
@@ -85,7 +102,8 @@ export async function createCustomer(input: CreateCustomerInput): Promise<Custom
 export async function verifyCustomerPassword(email: string, password: string): Promise<Customer | null> {
   const res = await pool.query(`SELECT * FROM customer WHERE email ILIKE $1`, [email.trim()]);
   const row = res.rows[0];
-  if (!row) return null;
+  // Google-only accounts have no password_hash -- nothing to verify against.
+  if (!row || !row.password_hash) return null;
   const ok = await verifyPassword(password, row.password_hash as string);
   return ok ? rowToCustomer(row) : null;
 }

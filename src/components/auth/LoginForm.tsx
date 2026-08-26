@@ -3,11 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/my-account";
+  const oauthError = searchParams.get("error");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,6 +41,13 @@ export function LoginForm() {
   return (
     <div className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
       <h1 className="mb-6 text-xl font-semibold text-text-primary">Log In</h1>
+      {oauthError && <p className="mb-4 text-sm text-discount">{oauthError}</p>}
+      <GoogleSignInButton next={next} />
+      <div className="my-4 flex items-center gap-3 text-xs uppercase text-text-muted">
+        <span className="h-px flex-1 bg-border" />
+        or
+        <span className="h-px flex-1 bg-border" />
+      </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         <input
           required
