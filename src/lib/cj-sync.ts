@@ -74,6 +74,25 @@ export function extractPid(input: string): string {
   return trimmed;
 }
 
+// product/query accepts pid, productSku (SPU), or variantSku as alternative
+// identifiers, but product-level SPU codes and variant SKU codes look
+// identical (CJ's own alphanumeric format, e.g. "CJXX1234567") -- there's no
+// way to tell them apart from the string alone, and CJ has no combined
+// lookup. Numeric input is always a pid; otherwise try productSku first and
+// fall back to variantSku if that 404s.
+async function resolveProductDetail(identifier: string): Promise<CjProductDetail> {
+  if (/^\d+$/.test(identifier)) {
+    return (await cjFetch(`/product/query?pid=${encodeURIComponent(identifier)}`)) as unknown as CjProductDetail;
+  }
+  try {
+    return (await cjFetch(`/product/query?productSku=${encodeURIComponent(identifier)}`)) as unknown as CjProductDetail;
+  } catch {
+    // product/query is QPS=1 -- space out the fallback retry.
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    return (await cjFetch(`/product/query?variantSku=${encodeURIComponent(identifier)}`)) as unknown as CjProductDetail;
+  }
+}
+
 async function upsertCategory(categoryId: string | undefined, categoryName: string | undefined): Promise<string | null> {
   if (!categoryId) return null;
   const leafName = categoryName?.split("/").pop()?.trim() || categoryName || "Uncategorised";
@@ -104,7 +123,7 @@ export interface SyncedProductSummary {
 
 /** Fetches one product from CJ by pid and upserts it into cj_product/variant/image. */
 export async function syncProductByPid(pid: string, appCategorySlug: string): Promise<SyncedProductSummary> {
-  const detail = (await cjFetch(`/product/query?pid=${encodeURIComponent(pid)}`)) as unknown as CjProductDetail;
+  const detail = await resolveProductDetail(pid);
   if (!detail?.pid) throw new Error(`No CJ product found for pid "${pid}"`);
 
   const nameEnList = parseJsonArrayField(detail.productName);
