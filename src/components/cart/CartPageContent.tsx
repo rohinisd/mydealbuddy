@@ -7,21 +7,37 @@ import { CoinIcon } from "@/components/icons/Icons";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { useCoupon } from "@/context/CouponContext";
+import { useSavedForLater } from "@/context/SavedForLaterContext";
 import { useProductsByIds } from "@/hooks/useProductsByIds";
 
 export function CartPageContent() {
-  const { lines, removeItem, setQuantity } = useCart();
+  const { lines, addItem, removeItem, setQuantity } = useCart();
   const { toggle: toggleWishlist } = useWishlist();
   const { applied, setApplied, clear: clearCoupon } = useCoupon();
+  const { lines: savedLines, save: saveForLater, remove: removeSaved } = useSavedForLater();
   const [coupon, setCoupon] = useState("");
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
   const [applyingCoupon, setApplyingCoupon] = useState(false);
 
-  const { products, loading } = useProductsByIds(lines.map((l) => l.productId));
+  const allProductIds = [...lines.map((l) => l.productId), ...savedLines.map((l) => l.productId)];
+  const { products, loading } = useProductsByIds(allProductIds);
   const productById = new Map(products.map((p) => [p.id, p]));
   const resolved = lines
     .map((line) => ({ line, product: productById.get(line.productId) }))
     .filter((r): r is { line: typeof lines[number]; product: NonNullable<typeof r.product> } => !!r.product);
+  const resolvedSaved = savedLines
+    .map((line) => ({ line, product: productById.get(line.productId) }))
+    .filter((r): r is { line: typeof savedLines[number]; product: NonNullable<typeof r.product> } => !!r.product);
+
+  function handleSaveForLater(productId: string, option: string | undefined, quantity: number) {
+    saveForLater(productId, option, quantity);
+    removeItem(productId, option);
+  }
+
+  function handleMoveToCart(productId: string, option: string | undefined, quantity: number) {
+    addItem(productId, option, quantity);
+    removeSaved(productId, option);
+  }
 
   if (loading) {
     return (
@@ -138,6 +154,13 @@ export function CartPageContent() {
                     </div>
                     <button
                       type="button"
+                      onClick={() => handleSaveForLater(line.productId, line.option, line.quantity)}
+                      className="text-xs font-semibold text-text-secondary hover:text-accent"
+                    >
+                      Save for Later
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         toggleWishlist(product.id);
                         removeItem(line.productId, line.option);
@@ -238,6 +261,60 @@ export function CartPageContent() {
                 Place Order
               </Link>
             </div>
+          </div>
+        </div>
+      )}
+
+      {resolvedSaved.length > 0 && (
+        <div className="mt-10">
+          <h2 className="mb-4 text-lg font-semibold text-text-primary">
+            Saved for Later <span className="text-sm font-normal text-text-muted">({resolvedSaved.length} items)</span>
+          </h2>
+          <div className="divide-y divide-border rounded-md border border-border lg:max-w-[calc(66.666%-1rem)]">
+            {resolvedSaved.map(({ line, product }) => (
+              <div key={`${line.productId}-${line.option ?? ""}`} className="flex gap-4 p-4">
+                <Link
+                  href={`/product/${product.slug}`}
+                  className="h-24 w-20 shrink-0 overflow-hidden rounded-md border border-border"
+                  style={{ backgroundColor: product.swatch }}
+                >
+                  {product.image && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
+                  )}
+                </Link>
+                <div className="flex flex-1 flex-col">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <Link href={`/product/${product.slug}`} className="font-bold text-text-primary hover:text-accent">
+                        {product.brand}
+                      </Link>
+                      <p className="text-sm text-text-secondary">{product.name}</p>
+                      {line.option && <p className="mt-0.5 text-xs text-text-muted">Option: {line.option}</p>}
+                    </div>
+                    <p className="font-bold text-text-primary">${(product.price * line.quantity).toFixed(2)}</p>
+                  </div>
+
+                  <div className="mt-auto flex items-center gap-4 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => handleMoveToCart(line.productId, line.option, line.quantity)}
+                      disabled={product.inStock === false}
+                      className="text-xs font-semibold text-accent-ink hover:underline disabled:cursor-not-allowed disabled:text-text-muted disabled:no-underline"
+                    >
+                      {product.inStock === false ? "Out of stock" : "Move to Cart"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeSaved(line.productId, line.option)}
+                      className="text-xs font-semibold text-text-secondary hover:text-discount"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
