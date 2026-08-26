@@ -1,13 +1,9 @@
 import "server-only";
 import { pool } from "@/lib/db";
 import { getShippingEstimate } from "@/lib/cj-shipping";
-import { createCjOrder, confirmOrder, simulatePay } from "@/lib/cj-orders";
+import { createCjOrder, confirmOrder } from "@/lib/cj-orders";
 import type { Order } from "@/lib/orders";
 import type { ShippingInput } from "@/lib/orders";
-
-function sandboxFlag(): boolean {
-  return process.env.CJ_ORDERS_SANDBOX !== "false";
-}
 
 /** CJ's createOrderV3 only accepts one product per order -- one row per cart line. */
 async function placeCjOrderForLine(
@@ -43,11 +39,11 @@ async function placeCjOrderForLine(
       },
     });
 
+    // Deliberately stops here -- confirmOrder makes the order real and
+    // visible in the CJ order list, matching the client's existing eBay
+    // workflow (orders land in CJ, he reviews and pays for them manually).
+    // Nothing in this app ever pays CJ automatically.
     await confirmOrder(result.orderId);
-    // Sandbox has no real payment step to trigger fulfillment -- simulatePay
-    // stands in for it. Live mode's equivalent real-payment step isn't wired
-    // up yet; CJ_ORDERS_SANDBOX must stay true until it is (see .env.local).
-    if (sandboxFlag()) await simulatePay(result.orderId);
 
     await pool.query(
       `UPDATE customer_order_cj_fulfillment SET status = 'placed', cj_order_id = $1, cj_order_number = $2, updated_at = now() WHERE id = $3`,
