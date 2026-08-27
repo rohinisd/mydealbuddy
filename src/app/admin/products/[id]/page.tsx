@@ -305,8 +305,16 @@ export default function AdminProductDetailPage() {
             ref={imageInputRef}
             onChange={handleAddImage}
             disabled={mediaBusy}
-            className="text-xs"
+            className="hidden"
           />
+          <button
+            type="button"
+            disabled={mediaBusy}
+            onClick={() => imageInputRef.current?.click()}
+            className="btn-tracking rounded-md bg-accent px-4 py-2 text-sm font-bold uppercase text-white hover:opacity-90 disabled:opacity-60"
+          >
+            + Add Photo
+          </button>
         </div>
       </div>
 
@@ -350,8 +358,16 @@ export default function AdminProductDetailPage() {
             ref={videoInputRef}
             onChange={handleUploadVideo}
             disabled={mediaBusy}
-            className="w-48 text-xs"
+            className="hidden"
           />
+          <button
+            type="button"
+            disabled={mediaBusy}
+            onClick={() => videoInputRef.current?.click()}
+            className="btn-tracking rounded-md bg-accent px-4 py-2 text-sm font-bold uppercase text-white hover:opacity-90 disabled:opacity-60"
+          >
+            + Upload Video
+          </button>
         </div>
         <p className="mt-2 text-xs text-text-muted">
           An uploaded video always takes priority over a CJ-synced one on the storefront. Delete any video here,
