@@ -1,6 +1,7 @@
 import "server-only";
 import sanitizeHtml from "sanitize-html";
 import { pool } from "@/lib/db";
+import { syncCjVideosForProduct } from "@/lib/product-videos";
 
 const CJ_API_BASE = process.env.CJ_API_BASE || "https://developers.cjdropshipping.com/api2.0/v1";
 
@@ -249,6 +250,18 @@ export async function syncProductByPid(pid: string, appCategorySlug: string): Pr
     await syncProductReviews(detail.pid, productDbId);
   } catch (err) {
     console.error(`Review sync failed for pid ${detail.pid}:`, err instanceof Error ? err.message : err);
+  }
+
+  // Pull CJ's free video automatically by default -- previously this only
+  // happened if an admin clicked "Check CJ for video" by hand. Most products
+  // won't have one (see product-videos-state memory), which is fine: this is
+  // a no-op then, and the admin can still upload their own from the product
+  // detail page. Never blocks the product being added over a video failure.
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  try {
+    await syncCjVideosForProduct(productDbId, detail.pid);
+  } catch (err) {
+    console.error(`Video sync failed for pid ${detail.pid}:`, err instanceof Error ? err.message : err);
   }
 
   return { productDbId, pid: detail.pid, nameEn: detail.productNameEn };
