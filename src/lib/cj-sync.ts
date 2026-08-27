@@ -184,12 +184,15 @@ export async function syncProductByPid(pid: string, appCategorySlug: string): Pr
   const productDbId = productResult.rows[0].id as string;
 
   const images = detail.productImageSet || [];
-  await pool.query(`DELETE FROM cj_product_image WHERE product_id = $1`, [productDbId]);
+  // Only ever touch source='cj' rows here -- an admin-added photo (see
+  // src/lib/product-images.ts, positions offset well past CJ's range) must
+  // survive a product being re-synced from CJ.
+  await pool.query(`DELETE FROM cj_product_image WHERE product_id = $1 AND source = 'cj'`, [productDbId]);
   for (let i = 0; i < images.length; i++) {
     const url = images[i];
     await pool.query(
-      `INSERT INTO cj_product_image (product_id, position, url, url_path)
-       VALUES ($1, $2, $3, $4) ON CONFLICT (product_id, position) DO NOTHING`,
+      `INSERT INTO cj_product_image (product_id, position, url, url_path, source)
+       VALUES ($1, $2, $3, $4, 'cj') ON CONFLICT (product_id, position) DO NOTHING`,
       [productDbId, i, url, url.split("?")[0]]
     );
   }

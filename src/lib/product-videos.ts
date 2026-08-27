@@ -162,3 +162,43 @@ export async function removeAdminVideo(productId: string): Promise<void> {
   }
   await pool.query(`DELETE FROM cj_product_video WHERE product_id = $1 AND source = 'admin'`, [productId]);
 }
+
+export interface ProductVideoRow {
+  id: string;
+  source: "cj" | "admin";
+  videoUrl: string;
+  coverUrl: string | null;
+  playCount: number | null;
+}
+
+export async function listVideosForProduct(productId: string): Promise<ProductVideoRow[]> {
+  const res = await pool.query(
+    `SELECT id, source, blob_video_url, blob_cover_url, play_count FROM cj_product_video
+     WHERE product_id = $1 AND blob_video_url IS NOT NULL
+     ORDER BY (source = 'admin') DESC, play_count DESC NULLS LAST`,
+    [productId]
+  );
+  return res.rows.map((r) => ({
+    id: String(r.id),
+    source: r.source,
+    videoUrl: r.blob_video_url,
+    coverUrl: r.blob_cover_url,
+    playCount: r.play_count,
+  }));
+}
+
+// Deletes any single video row by id, CJ-sourced or admin -- unlike
+// removeAdminVideo (which only ever clears the admin row as part of the
+// "replace on upload" flow), this lets the admin curate away a specific CJ
+// video too.
+export async function deleteVideoById(productId: string, videoId: string): Promise<void> {
+  const res = await pool.query(
+    `SELECT blob_video_url, blob_cover_url FROM cj_product_video WHERE id = $1 AND product_id = $2`,
+    [videoId, productId]
+  );
+  const row = res.rows[0];
+  if (!row) return;
+  if (row.blob_video_url) await deleteFromBlob(row.blob_video_url).catch(() => {});
+  if (row.blob_cover_url) await deleteFromBlob(row.blob_cover_url).catch(() => {});
+  await pool.query(`DELETE FROM cj_product_video WHERE id = $1`, [videoId]);
+}

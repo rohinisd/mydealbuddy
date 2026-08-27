@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import type { AdminProductDetail } from "@/lib/admin-products";
+import type { ProductImageRow } from "@/lib/product-images";
+import type { ProductVideoRow } from "@/lib/product-videos";
 
 function formatAttributes(attrs: Record<string, string> | null): string {
   if (!attrs) return "—";
@@ -21,6 +23,13 @@ export default function AdminProductDetailPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  const [images, setImages] = useState<ProductImageRow[]>([]);
+  const [videos, setVideos] = useState<ProductVideoRow[]>([]);
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const [mediaMessage, setMediaMessage] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
+
   async function load() {
     setLoading(true);
     const res = await fetch(`/api/admin/products/${id}`);
@@ -32,10 +41,107 @@ export default function AdminProductDetailPage() {
     setLoading(false);
   }
 
+  async function loadMedia() {
+    const [imagesRes, videosRes] = await Promise.all([
+      fetch(`/api/admin/products/${id}/images`),
+      fetch(`/api/admin/products/${id}/videos`),
+    ]);
+    if (imagesRes.ok) setImages(await imagesRes.json());
+    if (videosRes.ok) setVideos(await videosRes.json());
+  }
+
   useEffect(() => {
     load();
+    loadMedia();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time load on mount
   }, [id]);
+
+  async function handleAddImage() {
+    const file = imageInputRef.current?.files?.[0];
+    if (!file) return;
+    setMediaBusy(true);
+    setMediaMessage(null);
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      const res = await fetch(`/api/admin/products/${id}/images`, { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) {
+        setMediaMessage(`Failed: ${data.error}`);
+        return;
+      }
+      if (imageInputRef.current) imageInputRef.current.value = "";
+      await Promise.all([loadMedia(), load()]);
+    } finally {
+      setMediaBusy(false);
+    }
+  }
+
+  async function handleDeleteImage(imageId: string) {
+    setMediaBusy(true);
+    setMediaMessage(null);
+    try {
+      await fetch(`/api/admin/products/${id}/images/${imageId}`, { method: "DELETE" });
+      await Promise.all([loadMedia(), load()]);
+    } finally {
+      setMediaBusy(false);
+    }
+  }
+
+  async function handleCheckCjVideo() {
+    setMediaBusy(true);
+    setMediaMessage(null);
+    try {
+      const res = await fetch(`/api/admin/products/${id}/sync-video`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setMediaMessage(`Failed: ${data.error}`);
+        return;
+      }
+      setMediaMessage(
+        data.synced > 0
+          ? `Synced ${data.synced} free video(s) from CJ.`
+          : data.found > 0
+            ? `CJ has ${data.found} video(s) for this product, but none are free to use.`
+            : "CJ has no video for this product."
+      );
+      await loadMedia();
+    } finally {
+      setMediaBusy(false);
+    }
+  }
+
+  async function handleUploadVideo() {
+    const file = videoInputRef.current?.files?.[0];
+    if (!file) return;
+    setMediaBusy(true);
+    setMediaMessage(null);
+    try {
+      const formData = new FormData();
+      formData.append("video", file);
+      const res = await fetch(`/api/admin/products/${id}/video`, { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) {
+        setMediaMessage(`Failed: ${data.error}`);
+        return;
+      }
+      if (videoInputRef.current) videoInputRef.current.value = "";
+      await loadMedia();
+    } finally {
+      setMediaBusy(false);
+    }
+  }
+
+  async function handleDeleteVideo(videoId: string) {
+    setMediaBusy(true);
+    setMediaMessage(null);
+    try {
+      await fetch(`/api/admin/products/${id}/videos/${videoId}`, { method: "DELETE" });
+      await loadMedia();
+    } finally {
+      setMediaBusy(false);
+    }
+  }
 
   async function handleSavePrice() {
     const trimmed = priceInput.trim();
@@ -167,6 +273,91 @@ export default function AdminProductDetailPage() {
           estimated against the cheapest variant&apos;s CJ cost, before shipping.
         </p>
         {message && <p className="mt-2 text-sm text-text-secondary">{message}</p>}
+      </div>
+
+      <div className="mt-6 rounded-md border border-border p-4">
+        <p className="mb-3 text-xs font-bold uppercase tracking-wide text-text-muted">Photos</p>
+        <div className="flex flex-wrap gap-3">
+          {images.map((img) => (
+            <div key={img.id} className="group relative h-24 w-24 shrink-0 overflow-hidden rounded-md border border-border">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={img.url} alt="" className="h-full w-full object-cover" />
+              <span className="absolute left-1 top-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white">
+                {img.source}
+              </span>
+              <button
+                type="button"
+                disabled={mediaBusy}
+                onClick={() => handleDeleteImage(img.id)}
+                className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-xs font-bold text-white hover:bg-discount disabled:opacity-60"
+                aria-label="Delete photo"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          {images.length === 0 && <p className="text-sm text-text-muted">No photos.</p>}
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <input
+            type="file"
+            accept="image/*"
+            ref={imageInputRef}
+            onChange={handleAddImage}
+            disabled={mediaBusy}
+            className="text-xs"
+          />
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-md border border-border p-4">
+        <p className="mb-3 text-xs font-bold uppercase tracking-wide text-text-muted">Videos</p>
+        <div className="flex flex-col gap-2">
+          {videos.map((v) => (
+            <div key={v.id} className="flex items-center gap-3 rounded-md border border-border p-2">
+              <video src={v.videoUrl} poster={v.coverUrl ?? undefined} controls className="h-20 w-32 rounded bg-black object-cover" />
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-semibold uppercase ${
+                  v.source === "admin" ? "bg-surface-soft text-accent-ink" : "bg-surface-grey text-text-muted"
+                }`}
+              >
+                {v.source}
+              </span>
+              <button
+                type="button"
+                disabled={mediaBusy}
+                onClick={() => handleDeleteVideo(v.id)}
+                className="ml-auto shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-xs font-semibold text-discount hover:border-discount disabled:opacity-60"
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+          {videos.length === 0 && <p className="text-sm text-text-muted">No video yet.</p>}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={mediaBusy}
+            onClick={handleCheckCjVideo}
+            className="shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-xs font-semibold text-text-primary hover:border-accent disabled:opacity-60"
+          >
+            Check CJ for video
+          </button>
+          <input
+            type="file"
+            accept="video/*"
+            ref={videoInputRef}
+            onChange={handleUploadVideo}
+            disabled={mediaBusy}
+            className="w-48 text-xs"
+          />
+        </div>
+        <p className="mt-2 text-xs text-text-muted">
+          An uploaded video always takes priority over a CJ-synced one on the storefront. Delete any video here,
+          CJ-sourced or uploaded, if you don&apos;t want it shown.
+        </p>
+        {mediaMessage && <p className="mt-2 text-sm text-text-secondary">{mediaMessage}</p>}
       </div>
 
       <div className="mt-6">
