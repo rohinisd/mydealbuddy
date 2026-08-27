@@ -25,6 +25,7 @@ interface ProductRow {
   brand: string | null;
   price_min: string | null;
   price_max: string | null;
+  override_price: string | null;
   main_image_url: string | null;
   listed_count: number | null;
   sold_out: boolean | null;
@@ -35,7 +36,10 @@ interface ProductRow {
 }
 
 function rowToProduct(row: ProductRow, imageUrl: string | null, gallery: string[] = []): Product {
-  const price = row.price_min ? Number(row.price_min) : 0;
+  // An admin-set price always wins over CJ's own price_min -- see the
+  // override_price column comment for why (CJ's number is a marketing
+  // suggestion, not something the merchant controls).
+  const price = row.override_price ? Number(row.override_price) : row.price_min ? Number(row.price_min) : 0;
   const isNew = Date.now() - new Date(row.first_synced_at).getTime() < NEW_BADGE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
   const badges = [...(row.badges ?? []), ...(isNew ? ["new"] : [])] as NonNullable<Product["badges"]>;
   const ratingCount = row.review_count ? Number(row.review_count) : 0;
@@ -70,7 +74,7 @@ function rowToProduct(row: ProductRow, imageUrl: string | null, gallery: string[
 // exactly like a CJ one does.
 const BASE_QUERY = `
   SELECT p.id, p.pid, p.spu, p.name_en, p.app_category_slug, p.brand,
-         p.price_min, p.price_max, p.main_image_url, p.listed_count, p.sold_out,
+         p.price_min, p.price_max, p.override_price, p.main_image_url, p.listed_count, p.sold_out,
          p.badges, p.first_synced_at,
          (SELECT AVG(score) FROM (
             SELECT score FROM cj_product_review WHERE product_id = p.id AND score IS NOT NULL

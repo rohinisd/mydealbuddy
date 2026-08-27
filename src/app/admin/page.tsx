@@ -150,18 +150,20 @@ export default function AdminPage() {
         <div className="divide-y divide-border rounded-md border border-border">
           {products.map((p) => (
             <div key={p.id} className="flex items-center gap-3 p-3">
-              <div className="h-12 w-12 shrink-0 overflow-hidden rounded border border-border bg-surface-grey">
+              <Link href={`/admin/products/${p.id}`} className="h-12 w-12 shrink-0 overflow-hidden rounded border border-border bg-surface-grey">
                 {p.mainImageUrl && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={p.mainImageUrl} alt={p.nameEn} className="h-full w-full object-cover" />
                 )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-text-primary">{p.nameEn}</p>
+              </Link>
+              <Link href={`/admin/products/${p.id}`} className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-text-primary hover:text-accent">{p.nameEn}</p>
                 <p className="text-xs text-text-muted">
-                  {p.appCategorySlug ?? "uncategorized"} · ${p.priceMin?.toFixed(2) ?? "—"} · pid {p.pid}
+                  {p.appCategorySlug ?? "uncategorized"} · $
+                  {(p.overridePrice ?? p.priceMin)?.toFixed(2) ?? "—"}
+                  {p.overridePrice != null && <span className="text-accent-ink"> (your price)</span>} · pid {p.pid}
                 </p>
-              </div>
+              </Link>
               <span
                 className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
                   p.isActive ? "bg-surface-soft text-accent-ink" : "bg-surface-grey text-text-muted"
