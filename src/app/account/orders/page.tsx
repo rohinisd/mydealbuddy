@@ -9,6 +9,7 @@ const STATUS_LABEL: Record<string, string> = {
   pending_payment: "Pending Payment",
   paid: "Paid",
   cancelled: "Cancelled",
+  refunded: "Refunded",
 };
 
 export default async function OrdersPage() {

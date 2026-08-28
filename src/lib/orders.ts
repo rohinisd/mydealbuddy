@@ -318,6 +318,26 @@ export async function listAllOrdersForAdmin(limit = 200): Promise<Order[]> {
   return orders.map((row) => rowToOrder(row, linesByOrderId.get(String(row.id)) ?? []));
 }
 
+/** Public lookup for the Track Order page -- requires the shipping email to match, so an order number alone can't expose someone else's order. */
+export async function getOrderByNumberAndEmail(orderNumber: string, email: string): Promise<Order | null> {
+  const orderRes = await pool.query(
+    `SELECT * FROM customer_order WHERE order_number = $1 AND lower(shipping_email) = lower($2)`,
+    [orderNumber, email]
+  );
+  const orderRow = orderRes.rows[0];
+  if (!orderRow) return null;
+
+  const lineRes = await pool.query(`SELECT * FROM customer_order_line WHERE order_id = $1 ORDER BY id`, [orderRow.id]);
+  const lines: OrderLine[] = lineRes.rows.map((row) => ({
+    productId: String(row.product_id),
+    productName: row.product_name,
+    optionLabel: row.option_label,
+    unitPrice: Number(row.unit_price),
+    quantity: Number(row.quantity),
+  }));
+  return rowToOrder(orderRow, lines);
+}
+
 /** Unscoped lookup by id -- for admin use only, callers must enforce their own auth. */
 export async function getOrderById(orderId: string): Promise<Order | null> {
   const orderRes = await pool.query(`SELECT * FROM customer_order WHERE id = $1`, [orderId]);
