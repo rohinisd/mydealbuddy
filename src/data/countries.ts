@@ -1,8 +1,9 @@
 /**
  * ISO 3166-1 alpha-2 codes, used for the shipping-destination selector.
- * CJ's freightCalculate handles unsupported/invalid codes gracefully (returns
- * an empty options list rather than erroring) -- see src/lib/cj-shipping.ts --
- * so it's safe to offer a broad list here rather than a hand-picked subset.
+ * Scoped to the client's confirmed launch markets: US, Canada, Mexico, and
+ * Europe. Was previously a much broader worldwide list -- CJ's freightCalculate
+ * handles unsupported codes gracefully, but the client only wants these
+ * regions offered at checkout, not just "no error on the rest."
  */
 export const SHIPPING_COUNTRIES = [
   { code: "US", label: "United States" },
@@ -37,40 +38,4 @@ export const SHIPPING_COUNTRIES = [
   { code: "EE", label: "Estonia" },
   { code: "LV", label: "Latvia" },
   { code: "LT", label: "Lithuania" },
-  { code: "UA", label: "Ukraine" },
-  { code: "RU", label: "Russia" },
-  { code: "TR", label: "Turkey" },
-  { code: "IL", label: "Israel" },
-  { code: "AE", label: "United Arab Emirates" },
-  { code: "SA", label: "Saudi Arabia" },
-  { code: "QA", label: "Qatar" },
-  { code: "KW", label: "Kuwait" },
-  { code: "EG", label: "Egypt" },
-  { code: "ZA", label: "South Africa" },
-  { code: "NG", label: "Nigeria" },
-  { code: "KE", label: "Kenya" },
-  { code: "MA", label: "Morocco" },
-  { code: "IN", label: "India" },
-  { code: "PK", label: "Pakistan" },
-  { code: "BD", label: "Bangladesh" },
-  { code: "LK", label: "Sri Lanka" },
-  { code: "NP", label: "Nepal" },
-  { code: "CN", label: "China" },
-  { code: "HK", label: "Hong Kong" },
-  { code: "TW", label: "Taiwan" },
-  { code: "JP", label: "Japan" },
-  { code: "KR", label: "South Korea" },
-  { code: "SG", label: "Singapore" },
-  { code: "MY", label: "Malaysia" },
-  { code: "TH", label: "Thailand" },
-  { code: "VN", label: "Vietnam" },
-  { code: "PH", label: "Philippines" },
-  { code: "ID", label: "Indonesia" },
-  { code: "AU", label: "Australia" },
-  { code: "NZ", label: "New Zealand" },
-  { code: "BR", label: "Brazil" },
-  { code: "AR", label: "Argentina" },
-  { code: "CL", label: "Chile" },
-  { code: "CO", label: "Colombia" },
-  { code: "PE", label: "Peru" },
 ] as const;

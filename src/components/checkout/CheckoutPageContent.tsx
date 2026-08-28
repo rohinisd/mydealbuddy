@@ -40,6 +40,7 @@ export function CheckoutPageContent({
   const [saveAddress, setSaveAddress] = useState(false);
 
   const [shippingCost, setShippingCost] = useState<number | null>(null);
+  const [estimatedDays, setEstimatedDays] = useState<{ min: number; max: number } | null>(null);
   const [shippingCalculating, setShippingCalculating] = useState(false);
   const [shippingError, setShippingError] = useState<string | null>(null);
 
@@ -73,6 +74,7 @@ export function CheckoutPageContent({
     const trimmedZip = zip.trim();
     if (!countryCode || !trimmedZip || lines.length === 0 || !isValidPostalCode(countryCode, trimmedZip)) {
       setShippingCost(null);
+      setEstimatedDays(null);
       setShippingError(null);
       return;
     }
@@ -95,17 +97,21 @@ export function CheckoutPageContent({
           if (cancelled) return;
           if (data.error) {
             setShippingCost(null);
+            setEstimatedDays(null);
             setShippingError(data.error);
           } else if (!data.shippable) {
             setShippingCost(null);
+            setEstimatedDays(null);
             setShippingError("Some items in your cart can't be shipped to this address.");
           } else {
             setShippingCost(data.total);
+            setEstimatedDays(data.estimatedDays ?? null);
           }
         })
         .catch(() => {
           if (!cancelled) {
             setShippingCost(null);
+            setEstimatedDays(null);
             setShippingError("Couldn't calculate shipping. Try again.");
           }
         })
@@ -429,6 +435,12 @@ export function CheckoutPageContent({
               </span>
             </div>
             {shippingError && <p className="mt-1 text-xs text-discount">{shippingError}</p>}
+            {estimatedDays && (
+              <p className="mt-1 text-xs text-text-muted">
+                Estimated delivery: {estimatedDays.min}
+                {estimatedDays.max !== estimatedDays.min ? `–${estimatedDays.max}` : ""} days
+              </p>
+            )}
             {couponDiscount > 0 && (
               <div className="mt-2 flex justify-between text-sm text-price-note">
                 <span>Coupon ({applied?.code})</span>
