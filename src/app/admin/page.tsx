@@ -6,14 +6,20 @@ import { useRouter } from "next/navigation";
 import { PRODUCT_CATEGORIES } from "@/data/categories";
 import type { AdminProductRow } from "@/lib/admin-products";
 
+interface BulkAddResult {
+  input: string;
+  status: "pending" | "success" | "error";
+  message: string;
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const [products, setProducts] = useState<AdminProductRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [input, setInput] = useState("");
+  const [bulkInput, setBulkInput] = useState("");
   const [category, setCategory] = useState(PRODUCT_CATEGORIES[0]?.slug ?? "");
   const [adding, setAdding] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [results, setResults] = useState<BulkAddResult[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   async function loadProducts() {
@@ -28,27 +34,45 @@ export default function AdminPage() {
     loadProducts();
   }, []);
 
-  async function handleAdd(e: React.FormEvent) {
+  // CJ's own API is QPS=1, and syncProductByPid already spaces its internal
+  // calls accordingly -- so products just need to go strictly one at a time,
+  // awaited in order, with no extra delay between them. Running this loop in
+  // the browser (rather than one long backend request) sidesteps Vercel's
+  // function duration limit entirely: a batch of 20+ products can take
+  // minutes, well past what a single serverless request can survive.
+  async function handleBulkAdd(e: React.FormEvent) {
     e.preventDefault();
+    const lines = Array.from(new Set(bulkInput.split("\n").map((l) => l.trim()).filter(Boolean)));
+    if (lines.length === 0) return;
+
     setAdding(true);
-    setMessage(null);
-    try {
-      const res = await fetch("/api/admin/products", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input, category }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setMessage(`Failed: ${data.error}`);
-        return;
+    setResults(lines.map((line) => ({ input: line, status: "pending", message: "" })));
+
+    for (let i = 0; i < lines.length; i++) {
+      try {
+        const res = await fetch("/api/admin/products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ input: lines[i], category }),
+        });
+        const data = await res.json();
+        setResults((prev) =>
+          prev.map((r, idx) =>
+            idx === i
+              ? res.ok
+                ? { ...r, status: "success", message: `Added: ${data.product.nameEn}` }
+                : { ...r, status: "error", message: data.error || "Failed" }
+              : r
+          )
+        );
+      } catch {
+        setResults((prev) => prev.map((r, idx) => (idx === i ? { ...r, status: "error", message: "Network error" } : r)));
       }
-      setMessage(`Added: ${data.product.nameEn}`);
-      setInput("");
-      await loadProducts();
-    } finally {
-      setAdding(false);
     }
+
+    setBulkInput("");
+    setAdding(false);
+    await loadProducts();
   }
 
   async function toggleActive(product: AdminProductRow) {
@@ -113,33 +137,52 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <form onSubmit={handleAdd} className="mb-8 flex flex-wrap gap-2 rounded-md border border-border p-4">
-        <input
+      <form onSubmit={handleBulkAdd} className="mb-8 flex flex-wrap gap-2 rounded-md border border-border p-4">
+        <textarea
           required
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="CJ product link or pid"
+          rows={3}
+          value={bulkInput}
+          onChange={(e) => setBulkInput(e.target.value)}
+          placeholder={"CJ product link, pid, or SKU -- one per line to add multiple at once"}
           className="min-w-[280px] flex-1 rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
         />
-        <select
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          className="rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
-        >
-          {PRODUCT_CATEGORIES.map((c) => (
-            <option key={c.slug} value={c.slug}>
-              {c.label}
-            </option>
-          ))}
-        </select>
-        <button
-          type="submit"
-          disabled={adding}
-          className="btn-tracking rounded-md bg-accent px-4 py-2 text-sm font-bold uppercase text-white hover:opacity-90 disabled:opacity-60"
-        >
-          {adding ? "Adding..." : "Add Product"}
-        </button>
-        {message && <p className="w-full text-sm text-text-secondary">{message}</p>}
+        <div className="flex flex-col gap-2">
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
+          >
+            {PRODUCT_CATEGORIES.map((c) => (
+              <option key={c.slug} value={c.slug}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            disabled={adding}
+            className="btn-tracking rounded-md bg-accent px-4 py-2 text-sm font-bold uppercase text-white hover:opacity-90 disabled:opacity-60"
+          >
+            {adding ? "Adding..." : "Add Product(s)"}
+          </button>
+        </div>
+        <p className="w-full text-xs text-text-muted">All lines in one batch are added under the selected category.</p>
+        {results.length > 0 && (
+          <ul className="w-full space-y-1 rounded-md border border-border bg-surface-grey p-3 text-sm">
+            {results.map((r, i) => (
+              <li key={i} className="flex items-baseline gap-2">
+                <span
+                  className={
+                    r.status === "success" ? "text-accent-ink" : r.status === "error" ? "text-discount" : "text-text-muted"
+                  }
+                >
+                  {r.status === "pending" ? "…" : r.status === "success" ? "✓" : "✗"}
+                </span>
+                <span className="truncate text-text-secondary">{r.message || r.input}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </form>
 
       {loading ? (
