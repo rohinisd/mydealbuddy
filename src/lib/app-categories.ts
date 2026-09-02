@@ -58,23 +58,27 @@ export async function getCategoryTree(): Promise<CategoryTop[]> {
   return assembleTree(res.rows.map(rowToCategory));
 }
 
-// Only categories (at every level) with at least one active product beneath
-// them -- used for customer-facing nav so it doesn't show hundreds of empty
-// entries while the catalog is still small.
-export async function getPopulatedCategoryTree(): Promise<CategoryTop[]> {
-  const res = await pool.query(
-    `SELECT ac.* FROM app_category ac
-     WHERE EXISTS (
-       SELECT 1 FROM cj_product p
-       WHERE p.is_active = true AND p.app_category_id IS NOT NULL AND (
-         (ac.level = 1 AND p.app_category_id IN (SELECT id FROM app_category WHERE l1_slug = ac.l1_slug)) OR
-         (ac.level = 2 AND p.app_category_id IN (SELECT id FROM app_category WHERE l1_slug = ac.l1_slug AND l2_slug = ac.l2_slug)) OR
-         (ac.level = 3 AND p.app_category_id = ac.id)
+// All 14 top-level categories always show, even ones with zero products yet
+// -- looks like a complete storefront rather than a half-built one. Groups
+// and leaves are still pruned to only ones with at least one active product,
+// so a populated top category's flyout doesn't list dozens of empty
+// subcategories while the catalog is still small.
+export async function getNavCategoryTree(): Promise<CategoryTop[]> {
+  const [allL1, populatedL2L3] = await Promise.all([
+    pool.query(`SELECT * FROM app_category WHERE level = 1 ORDER BY id`),
+    pool.query(
+      `SELECT ac.* FROM app_category ac
+       WHERE ac.level IN (2, 3) AND EXISTS (
+         SELECT 1 FROM cj_product p
+         WHERE p.is_active = true AND p.app_category_id IS NOT NULL AND (
+           (ac.level = 2 AND p.app_category_id IN (SELECT id FROM app_category WHERE l1_slug = ac.l1_slug AND l2_slug = ac.l2_slug)) OR
+           (ac.level = 3 AND p.app_category_id = ac.id)
+         )
        )
-     )
-     ORDER BY ac.level, ac.id`
-  );
-  return assembleTree(res.rows.map(rowToCategory));
+       ORDER BY ac.level, ac.id`
+    ),
+  ]);
+  return assembleTree([...allL1.rows, ...populatedL2L3.rows].map(rowToCategory));
 }
 
 function assembleTree(rows: CategoryRow[]): CategoryTop[] {

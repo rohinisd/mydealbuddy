@@ -1,8 +1,8 @@
-import { getPopulatedCategoryTree } from "@/lib/app-categories";
+import { getNavCategoryTree } from "@/lib/app-categories";
 import { SubcategoryTiles } from "@/components/plp/SubcategoryTiles";
 
 export async function CategoryGrid() {
-  const tree = await getPopulatedCategoryTree();
+  const tree = await getNavCategoryTree();
   if (tree.length === 0) return null;
 
   return (

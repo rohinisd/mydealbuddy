@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getPopulatedCategoryTree } from "@/lib/app-categories";
+import { getNavCategoryTree } from "@/lib/app-categories";
 import { NewsletterForm } from "@/components/layout/NewsletterForm";
 
 const CUSTOMER_POLICY_LINKS = [
@@ -23,7 +23,7 @@ const USEFUL_LINKS = [
 const SOCIALS = ["Facebook", "X", "Instagram"];
 
 export async function Footer() {
-  const categories = await getPopulatedCategoryTree();
+  const categories = await getNavCategoryTree();
   return (
     <footer className="mt-16 border-t border-border bg-surface-grey">
       <div className="mx-auto max-w-[1280px] px-4 py-10">
