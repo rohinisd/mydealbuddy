@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { PRODUCT_CATEGORIES } from "@/data/categories";
+import { CategoryPicker } from "@/components/admin/CategoryPicker";
 import type { AdminProductRow } from "@/lib/admin-products";
 
 interface BulkAddResult {
@@ -17,7 +17,7 @@ export default function AdminPage() {
   const [products, setProducts] = useState<AdminProductRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [bulkInput, setBulkInput] = useState("");
-  const [category, setCategory] = useState(PRODUCT_CATEGORIES[0]?.slug ?? "");
+  const [categoryId, setCategoryId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [results, setResults] = useState<BulkAddResult[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -43,7 +43,7 @@ export default function AdminPage() {
   async function handleBulkAdd(e: React.FormEvent) {
     e.preventDefault();
     const lines = Array.from(new Set(bulkInput.split("\n").map((l) => l.trim()).filter(Boolean)));
-    if (lines.length === 0) return;
+    if (lines.length === 0 || !categoryId) return;
 
     setAdding(true);
     setResults(lines.map((line) => ({ input: line, status: "pending", message: "" })));
@@ -53,7 +53,7 @@ export default function AdminPage() {
         const res = await fetch("/api/admin/products", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ input: lines[i], category }),
+          body: JSON.stringify({ input: lines[i], categoryId }),
         });
         const data = await res.json();
         setResults((prev) =>
@@ -147,20 +147,10 @@ export default function AdminPage() {
           className="min-w-[280px] flex-1 rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
         />
         <div className="flex flex-col gap-2">
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
-          >
-            {PRODUCT_CATEGORIES.map((c) => (
-              <option key={c.slug} value={c.slug}>
-                {c.label}
-              </option>
-            ))}
-          </select>
+          <CategoryPicker value={categoryId} onChange={setCategoryId} disabled={adding} />
           <button
             type="submit"
-            disabled={adding}
+            disabled={adding || !categoryId}
             className="btn-tracking rounded-md bg-accent px-4 py-2 text-sm font-bold uppercase text-white hover:opacity-90 disabled:opacity-60"
           >
             {adding ? "Adding..." : "Add Product(s)"}
@@ -202,8 +192,12 @@ export default function AdminPage() {
               <Link href={`/admin/products/${p.id}`} className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-text-primary hover:text-accent">{p.nameEn}</p>
                 <p className="text-xs text-text-muted">
-                  {p.appCategorySlug ?? "uncategorized"} · $
-                  {(p.overridePrice ?? p.priceMin)?.toFixed(2) ?? "—"}
+                  {p.categoryLabel ? (
+                    p.categoryLabel
+                  ) : (
+                    <span className="font-semibold text-discount">Uncategorized</span>
+                  )}{" "}
+                  · ${(p.overridePrice ?? p.priceMin)?.toFixed(2) ?? "—"}
                   {p.overridePrice != null && <span className="text-accent-ink"> (your price)</span>} · pid {p.pid}
                 </p>
               </Link>

@@ -1,6 +1,7 @@
 import "server-only";
 import { pool } from "@/lib/db";
-import type { Product, ProductReview } from "@/types/product";
+import type { CategoryRow } from "@/lib/app-categories";
+import type { CategoryPathSegment, Product, ProductReview } from "@/types/product";
 
 // Slug is derived deterministically (CJ has no concept of one) so it's
 // stable across reads without needing storage.
@@ -21,7 +22,12 @@ interface ProductRow {
   pid: string;
   spu: string | null;
   name_en: string;
-  app_category_slug: string | null;
+  category_full_slug: string | null;
+  category_l1_slug: string | null;
+  category_l1_name: string | null;
+  category_l2_slug: string | null;
+  category_l2_name: string | null;
+  category_l3_name: string | null;
   brand: string | null;
   price_min: string | null;
   price_max: string | null;
@@ -35,6 +41,14 @@ interface ProductRow {
   review_count: string | null;
 }
 
+function categoryPathFromRow(row: ProductRow): CategoryPathSegment[] {
+  if (!row.category_full_slug) return [];
+  const path: CategoryPathSegment[] = [{ slug: row.category_l1_slug!, name: row.category_l1_name! }];
+  if (row.category_l2_slug) path.push({ slug: `${row.category_l1_slug}/${row.category_l2_slug}`, name: row.category_l2_name! });
+  if (row.category_l3_name) path.push({ slug: row.category_full_slug, name: row.category_l3_name });
+  return path;
+}
+
 function rowToProduct(row: ProductRow, imageUrl: string | null, gallery: string[] = []): Product {
   // An admin-set price always wins over CJ's own price_min -- see the
   // override_price column comment for why (CJ's number is a marketing
@@ -43,11 +57,14 @@ function rowToProduct(row: ProductRow, imageUrl: string | null, gallery: string[
   const isNew = Date.now() - new Date(row.first_synced_at).getTime() < NEW_BADGE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
   const badges = [...(row.badges ?? []), ...(isNew ? ["new"] : [])] as NonNullable<Product["badges"]>;
   const ratingCount = row.review_count ? Number(row.review_count) : 0;
+  const categoryPath = categoryPathFromRow(row);
 
   return {
     id: row.id,
     slug: slugify(row.name_en, row.pid),
-    category: row.app_category_slug ?? "auto-home",
+    category: row.category_full_slug ?? "uncategorized",
+    categoryLabel: row.category_l3_name ?? "Uncategorized",
+    categoryPath,
     brand: row.brand ?? "CJ Marketplace",
     name: row.name_en,
     price,
@@ -73,7 +90,9 @@ function rowToProduct(row: ProductRow, imageUrl: string | null, gallery: string[
 // (customer_product_review) -- a real review should move the shown rating
 // exactly like a CJ one does.
 const BASE_QUERY = `
-  SELECT p.id, p.pid, p.spu, p.name_en, p.app_category_slug, p.brand,
+  SELECT p.id, p.pid, p.spu, p.name_en, p.brand,
+         ac.full_slug AS category_full_slug, ac.l1_slug AS category_l1_slug, ac.l1_name AS category_l1_name,
+         ac.l2_slug AS category_l2_slug, ac.l2_name AS category_l2_name, ac.l3_name AS category_l3_name,
          p.price_min, p.price_max, p.override_price, p.main_image_url, p.listed_count, p.sold_out,
          p.badges, p.first_synced_at,
          (SELECT AVG(score) FROM (
@@ -87,11 +106,31 @@ const BASE_QUERY = `
             SELECT 1 AS n FROM customer_product_review WHERE product_id = p.id
           ) combined_counts) AS review_count
   FROM cj_product p
+  LEFT JOIN app_category ac ON ac.id = p.app_category_id
   WHERE p.is_active = true
 `;
 
 export async function getAllProducts(): Promise<Product[]> {
   const res = await pool.query(`${BASE_QUERY} ORDER BY p.id`);
+  return res.rows.map((row) => rowToProduct(row, row.main_image_url));
+}
+
+// Scoped to whatever level the matched /product-category/[...slugs] row is:
+// a leaf matches exactly, a group/top level matches every descendant.
+export async function getProductsByCategoryScope(category: CategoryRow): Promise<Product[]> {
+  let clause: string;
+  let params: string[];
+  if (category.level === 3) {
+    clause = `p.app_category_id = $1`;
+    params = [category.id];
+  } else if (category.level === 2) {
+    clause = `ac.l1_slug = $1 AND ac.l2_slug = $2`;
+    params = [category.l1Slug, category.l2Slug!];
+  } else {
+    clause = `ac.l1_slug = $1`;
+    params = [category.l1Slug];
+  }
+  const res = await pool.query(`${BASE_QUERY} AND ${clause} ORDER BY p.id`, params);
   return res.rows.map((row) => rowToProduct(row, row.main_image_url));
 }
 
@@ -196,6 +235,10 @@ export async function getProductReviews(productId: string, limit = 20): Promise<
 }
 
 export async function getRelatedProducts(product: Product, limit = 4): Promise<Product[]> {
+  // Exact leaf-category matches are usually too narrow at this catalog size --
+  // match by top-level category instead for a wider, still-relevant pool.
+  const topSlug = product.categoryPath[0]?.slug;
+  if (!topSlug) return [];
   const all = await getAllProducts();
-  return all.filter((p) => p.category === product.category && p.id !== product.id).slice(0, limit);
+  return all.filter((p) => p.categoryPath[0]?.slug === topSlug && p.id !== product.id).slice(0, limit);
 }

@@ -1,9 +1,19 @@
 export type ProductBadge = "deal" | "sale" | "new";
 
+export interface CategoryPathSegment {
+  slug: string;
+  name: string;
+}
+
 export interface Product {
   id: string;
   slug: string;
+  /** Full category path slug (e.g. "womens-clothing/accessories/scarves-wraps"), or "uncategorized". */
   category: string;
+  /** This product's own leaf category name (e.g. "Scarves & Wraps"), or "Uncategorized". */
+  categoryLabel: string;
+  /** Top-to-leaf breadcrumb, e.g. [{slug:"womens-clothing",name:"Women's Clothing"}, ...]. Empty when uncategorized. */
+  categoryPath: CategoryPathSegment[];
   brand: string;
   name: string;
   price: number;

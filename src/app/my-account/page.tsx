@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
 import { AccountLayout } from "@/components/account/AccountLayout";
 import { WishlistCountCard } from "@/components/account/WishlistCountCard";
 import { CoinIcon } from "@/components/icons/Icons";
@@ -19,6 +21,8 @@ export default async function MyAccountPage() {
   ]);
 
   return (
+    <>
+    <Header />
     <AccountLayout title="Overview" customerFirstName={customer.firstName}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-md border border-border p-4">
@@ -42,5 +46,7 @@ export default async function MyAccountPage() {
         </div>
       </div>
     </AccountLayout>
+    <Footer />
+    </>
   );
 }

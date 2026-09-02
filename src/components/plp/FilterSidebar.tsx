@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { ChevronDownIcon } from "@/components/icons/Icons";
-import { PRODUCT_CATEGORIES } from "@/data/categories";
 import type { FacetCounts } from "@/lib/plp";
 import { DEFAULT_FILTERS, DISCOUNT_BUCKETS, PRICE_BUCKETS, RATING_BUCKETS, type PLPFilters } from "@/types/plp";
 
@@ -103,15 +102,17 @@ export function FilterSidebar({
       </div>
 
       <FilterSection title="Categories">
-        {PRODUCT_CATEGORIES.map((cat) => (
-          <Checkbox
-            key={cat.slug}
-            checked={filters.categories.includes(cat.slug)}
-            onChange={() => toggleInList("categories", cat.slug)}
-            label={cat.label}
-            count={facets.categories[cat.slug] ?? 0}
-          />
-        ))}
+        {Object.entries(facets.categories)
+          .sort((a, b) => b[1] - a[1])
+          .map(([slug, count]) => (
+            <Checkbox
+              key={slug}
+              checked={filters.categories.includes(slug)}
+              onChange={() => toggleInList("categories", slug)}
+              label={facets.categoryLabels[slug] ?? slug}
+              count={count}
+            />
+          ))}
       </FilterSection>
 
       <FilterSection title="Brand">

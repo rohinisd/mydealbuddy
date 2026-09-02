@@ -1,7 +1,6 @@
 "use client";
 
 import { XIcon } from "@/components/icons/Icons";
-import { PRODUCT_CATEGORIES } from "@/data/categories";
 import { DEFAULT_FILTERS, DISCOUNT_BUCKETS, PRICE_BUCKETS, RATING_BUCKETS, type PLPFilters } from "@/types/plp";
 
 interface Chip {
@@ -13,14 +12,16 @@ interface Chip {
 export function AppliedFilters({
   filters,
   onChange,
+  categoryLabels = {},
 }: {
   filters: PLPFilters;
   onChange: (next: PLPFilters) => void;
+  categoryLabels?: Record<string, string>;
 }) {
   const chips: Chip[] = [];
 
   for (const slug of filters.categories) {
-    const label = PRODUCT_CATEGORIES.find((c) => c.slug === slug)?.label ?? slug;
+    const label = categoryLabels[slug] ?? slug;
     chips.push({
       key: `cat-${slug}`,
       label,

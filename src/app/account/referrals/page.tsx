@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
 import { AccountLayout } from "@/components/account/AccountLayout";
 import { CopyReferralLink } from "@/components/account/CopyReferralLink";
 import { ShareMenu } from "@/components/shared/ShareMenu";
@@ -17,6 +19,8 @@ export default async function ReferralsPage() {
   const referralLink = `${siteUrl}/signup?ref=${stats.referralCode}`;
 
   return (
+    <>
+    <Header />
     <AccountLayout title="Referrals" customerFirstName={customer.firstName}>
       <p className="text-sm text-text-secondary">
         Share your link — when a friend signs up and places their first order, you both earn Buddy Coins.
@@ -52,5 +56,7 @@ export default async function ReferralsPage() {
         </div>
       </div>
     </AccountLayout>
+    <Footer />
+    </>
   );
 }

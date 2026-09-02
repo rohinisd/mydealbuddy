@@ -8,7 +8,6 @@ import { ShareMenu } from "@/components/shared/ShareMenu";
 import { ReviewForm } from "@/components/pdp/ReviewForm";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
-import { PRODUCT_CATEGORIES } from "@/data/categories";
 import { SHIPPING_COUNTRIES } from "@/data/countries";
 import { isValidPostalCode } from "@/lib/postal-codes";
 import { discountPct, getSku, type Product, type ProductReview } from "@/types/product";
@@ -77,7 +76,6 @@ export function ProductDetail({
   const [checkingDelivery, setCheckingDelivery] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
 
-  const category = PRODUCT_CATEGORIES.find((c) => c.slug === product.category);
   const pct = discountPct(product.price, product.mrp);
   const wishlisted = has(product.id);
   const distribution = useMemo(() => ratingDistribution(reviews), [reviews]);
@@ -126,7 +124,7 @@ export function ProductDetail({
       <Breadcrumb
         items={[
           { label: "Home", href: "/" },
-          ...(category ? [{ label: category.label, href: `/product-category/${category.slug}` }] : []),
+          ...product.categoryPath.map((seg) => ({ label: seg.name, href: `/product-category/${seg.slug}` })),
           { label: product.name },
         ]}
       />
@@ -338,7 +336,7 @@ export function ProductDetail({
           </div>
           <div className="flex justify-between border-b border-border py-2 sm:justify-start sm:gap-4">
             <dt className="text-text-muted">Category</dt>
-            <dd className="font-medium text-text-primary">{category?.label ?? product.category}</dd>
+            <dd className="font-medium text-text-primary">{product.categoryLabel}</dd>
           </div>
           <div className="flex justify-between border-b border-border py-2 sm:justify-start sm:gap-4">
             <dt className="text-text-muted">SKU</dt>

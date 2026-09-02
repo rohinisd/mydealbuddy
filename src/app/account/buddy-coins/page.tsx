@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
 import { AccountLayout } from "@/components/account/AccountLayout";
 import { CoinIcon } from "@/components/icons/Icons";
 import { getCurrentCustomer } from "@/lib/current-customer";
@@ -24,6 +26,8 @@ export default async function BuddyCoinsPage() {
   const { balance, rows } = await getBuddyCoinLedger(customer.id);
 
   return (
+    <>
+    <Header />
     <AccountLayout title="Buddy Coins" customerFirstName={customer.firstName}>
       <div className="flex items-center gap-3 rounded-md border border-border bg-surface-grey p-5">
         <CoinIcon className="h-8 w-8 text-accent" />
@@ -53,5 +57,7 @@ export default async function BuddyCoinsPage() {
         </ul>
       )}
     </AccountLayout>
+    <Footer />
+    </>
   );
 }

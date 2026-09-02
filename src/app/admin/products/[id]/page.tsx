@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { CategoryPicker } from "@/components/admin/CategoryPicker";
 import type { AdminProductDetail } from "@/lib/admin-products";
 import type { ProductImageRow } from "@/lib/product-images";
 import type { ProductVideoRow } from "@/lib/product-videos";
@@ -22,6 +23,8 @@ export default function AdminProductDetailPage() {
   const [priceInput, setPriceInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [categorySaving, setCategorySaving] = useState(false);
+  const [categoryMessage, setCategoryMessage] = useState<string | null>(null);
 
   const [images, setImages] = useState<ProductImageRow[]>([]);
   const [videos, setVideos] = useState<ProductVideoRow[]>([]);
@@ -143,6 +146,27 @@ export default function AdminProductDetailPage() {
     }
   }
 
+  async function handleSaveCategory(categoryId: string) {
+    setCategorySaving(true);
+    setCategoryMessage(null);
+    try {
+      const res = await fetch(`/api/admin/products/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categoryId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCategoryMessage(`Failed: ${data.error}`);
+        return;
+      }
+      setCategoryMessage("Saved.");
+      await load();
+    } finally {
+      setCategorySaving(false);
+    }
+  }
+
   async function handleSavePrice() {
     const trimmed = priceInput.trim();
     const overridePrice = trimmed === "" ? null : Number(trimmed);
@@ -221,7 +245,8 @@ export default function AdminProductDetailPage() {
             <span className="font-semibold text-text-primary">Brand:</span> {product.brand ?? "—"}
           </p>
           <p>
-            <span className="font-semibold text-text-primary">Category:</span> {product.appCategorySlug ?? "—"}
+            <span className="font-semibold text-text-primary">Category:</span>{" "}
+            {product.categoryLabel ?? <span className="font-semibold text-discount">Uncategorized</span>}
           </p>
           <p>
             <span className="font-semibold text-text-primary">CJ pid:</span> {product.pid}
@@ -235,6 +260,13 @@ export default function AdminProductDetailPage() {
             {product.priceMax != null && product.priceMax !== product.priceMin ? ` – $${product.priceMax.toFixed(2)}` : ""}
           </p>
         </div>
+      </div>
+
+      <div className="mt-6 rounded-md border border-border p-4">
+        <p className="mb-3 text-xs font-bold uppercase tracking-wide text-text-muted">Category</p>
+        <CategoryPicker value={product.categoryId} onChange={handleSaveCategory} disabled={categorySaving} />
+        <p className="mt-2 text-xs text-text-muted">Changing this re-files the product immediately -- no separate save button needed.</p>
+        {categoryMessage && <p className="mt-2 text-sm text-text-secondary">{categoryMessage}</p>}
       </div>
 
       <div className="mt-6 rounded-md border border-border p-4">

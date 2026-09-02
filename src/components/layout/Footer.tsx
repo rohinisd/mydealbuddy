@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { NAV_CATEGORIES } from "@/data/categories";
+import { getPopulatedCategoryTree } from "@/lib/app-categories";
 import { NewsletterForm } from "@/components/layout/NewsletterForm";
 
 const CUSTOMER_POLICY_LINKS = [
@@ -22,7 +22,8 @@ const USEFUL_LINKS = [
 
 const SOCIALS = ["Facebook", "X", "Instagram"];
 
-export function Footer() {
+export async function Footer() {
+  const categories = await getPopulatedCategoryTree();
   return (
     <footer className="mt-16 border-t border-border bg-surface-grey">
       <div className="mx-auto max-w-[1280px] px-4 py-10">
@@ -32,10 +33,10 @@ export function Footer() {
               Online Shopping
             </p>
             <ul className="space-y-2 text-sm text-text-secondary">
-              {NAV_CATEGORIES.map((cat) => (
-                <li key={cat.label}>
-                  <Link href={cat.href} className="hover:text-accent">
-                    {cat.label}
+              {categories.map((cat) => (
+                <li key={cat.id}>
+                  <Link href={`/product-category/${cat.fullSlug}`} className="hover:text-accent">
+                    {cat.name}
                   </Link>
                 </li>
               ))}

@@ -76,7 +76,7 @@ export function ProductListingPage({
             </div>
           </div>
 
-          <AppliedFilters filters={filters} onChange={setFilters} />
+          <AppliedFilters filters={filters} onChange={setFilters} categoryLabels={facets.categoryLabels} />
 
           <ProductGrid products={sorted} visibleCount={visibleCount} onLoadMore={handleLoadMore} />
         </div>

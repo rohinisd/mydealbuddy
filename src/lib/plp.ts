@@ -39,15 +39,18 @@ export function sortProducts(products: Product[], sort: SortOption): Product[] {
 
 export interface FacetCounts {
   categories: Record<string, number>;
+  categoryLabels: Record<string, string>;
   brands: Record<string, number>;
 }
 
 export function computeFacetCounts(products: Product[]): FacetCounts {
   const categories: Record<string, number> = {};
+  const categoryLabels: Record<string, string> = {};
   const brands: Record<string, number> = {};
   for (const p of products) {
     categories[p.category] = (categories[p.category] ?? 0) + 1;
+    categoryLabels[p.category] = p.categoryLabel;
     brands[p.brand] = (brands[p.brand] ?? 0) + 1;
   }
-  return { categories, brands };
+  return { categories, categoryLabels, brands };
 }

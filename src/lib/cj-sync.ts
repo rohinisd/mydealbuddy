@@ -122,8 +122,8 @@ export interface SyncedProductSummary {
   nameEn: string;
 }
 
-/** Fetches one product from CJ by pid and upserts it into cj_product/variant/image. */
-export async function syncProductByPid(pid: string, appCategorySlug: string): Promise<SyncedProductSummary> {
+/** Fetches one product from CJ by pid and upserts it into cj_product/variant/image. appCategoryId must be a leaf (level 3) app_category.id. */
+export async function syncProductByPid(pid: string, appCategoryId: string): Promise<SyncedProductSummary> {
   const detail = await resolveProductDetail(pid);
   if (!detail?.pid) throw new Error(`No CJ product found for pid "${pid}"`);
 
@@ -146,7 +146,7 @@ export async function syncProductByPid(pid: string, appCategorySlug: string): Pr
        pid, spu, name_en, name_cn, description_html, hs_code, main_image_url,
        category_l3_id, currency, price_min, price_max,
        weight_min_g, weight_max_g, listed_count, sold_out,
-       app_category_slug, brand, raw_payload, is_active, fetched_at
+       app_category_id, brand, raw_payload, is_active, fetched_at
      ) VALUES (
        $1,$2,$3,$4,$5,$6,$7,$8,'USD',$9,$10,$11,$12,$13,$14,$15,$16,$17, true, now()
      )
@@ -156,7 +156,7 @@ export async function syncProductByPid(pid: string, appCategorySlug: string): Pr
        main_image_url = EXCLUDED.main_image_url,
        price_min = EXCLUDED.price_min,
        price_max = EXCLUDED.price_max,
-       app_category_slug = EXCLUDED.app_category_slug,
+       app_category_id = EXCLUDED.app_category_id,
        brand = EXCLUDED.brand,
        raw_payload = EXCLUDED.raw_payload,
        is_active = true,
@@ -177,7 +177,7 @@ export async function syncProductByPid(pid: string, appCategorySlug: string): Pr
       weights.length ? Math.max(...weights) : null,
       detail.listedNum ?? null,
       detail.status === "0",
-      appCategorySlug,
+      appCategoryId,
       brand,
       JSON.stringify(detail),
     ]

@@ -5,7 +5,8 @@ export interface AdminProductRow {
   id: string;
   pid: string;
   nameEn: string;
-  appCategorySlug: string | null;
+  categoryId: string | null;
+  categoryLabel: string | null;
   brand: string | null;
   priceMin: number | null;
   overridePrice: number | null;
@@ -15,16 +16,25 @@ export interface AdminProductRow {
   fetchedAt: string;
 }
 
+const CATEGORY_JOIN = `LEFT JOIN app_category ac ON ac.id = p.app_category_id`;
+// "L1Name / L2Name / L3Name" -- full breadcrumb so two same-named leaves under
+// different top categories (e.g. "Accessories" appears several times) aren't
+// ambiguous in the admin list.
+const CATEGORY_LABEL_EXPR = `NULLIF(concat_ws(' / ', ac.l1_name, ac.l2_name, ac.l3_name), '')`;
+
 export async function listAllProductsForAdmin(): Promise<AdminProductRow[]> {
   const res = await pool.query(
-    `SELECT id, pid, name_en, app_category_slug, brand, price_min, override_price, main_image_url, is_active, badges, fetched_at
-     FROM cj_product ORDER BY fetched_at DESC`
+    `SELECT p.id, p.pid, p.name_en, p.app_category_id, ${CATEGORY_LABEL_EXPR} AS category_label,
+            p.brand, p.price_min, p.override_price, p.main_image_url, p.is_active, p.badges, p.fetched_at
+     FROM cj_product p ${CATEGORY_JOIN}
+     ORDER BY p.fetched_at DESC`
   );
   return res.rows.map((row) => ({
     id: row.id,
     pid: row.pid,
     nameEn: row.name_en,
-    appCategorySlug: row.app_category_slug,
+    categoryId: row.app_category_id ? String(row.app_category_id) : null,
+    categoryLabel: row.category_label,
     brand: row.brand,
     priceMin: row.price_min ? Number(row.price_min) : null,
     overridePrice: row.override_price ? Number(row.override_price) : null,
@@ -50,7 +60,8 @@ export interface AdminProductDetail {
   spu: string | null;
   nameEn: string;
   descriptionHtml: string | null;
-  appCategorySlug: string | null;
+  categoryId: string | null;
+  categoryLabel: string | null;
   brand: string | null;
   priceMin: number | null;
   priceMax: number | null;
@@ -62,7 +73,11 @@ export interface AdminProductDetail {
 }
 
 export async function getProductDetailForAdmin(id: string): Promise<AdminProductDetail | null> {
-  const productRes = await pool.query(`SELECT * FROM cj_product WHERE id = $1`, [id]);
+  const productRes = await pool.query(
+    `SELECT p.*, ${CATEGORY_LABEL_EXPR} AS category_label
+     FROM cj_product p ${CATEGORY_JOIN} WHERE p.id = $1`,
+    [id]
+  );
   const row = productRes.rows[0];
   if (!row) return null;
 
@@ -78,7 +93,8 @@ export async function getProductDetailForAdmin(id: string): Promise<AdminProduct
     spu: row.spu,
     nameEn: row.name_en,
     descriptionHtml: row.description_html,
-    appCategorySlug: row.app_category_slug,
+    categoryId: row.app_category_id ? String(row.app_category_id) : null,
+    categoryLabel: row.category_label,
     brand: row.brand,
     priceMin: row.price_min ? Number(row.price_min) : null,
     priceMax: row.price_max ? Number(row.price_max) : null,
@@ -99,4 +115,8 @@ export async function getProductDetailForAdmin(id: string): Promise<AdminProduct
 
 export async function setProductOverridePrice(id: string, price: number | null): Promise<void> {
   await pool.query(`UPDATE cj_product SET override_price = $1 WHERE id = $2`, [price, id]);
+}
+
+export async function setProductCategory(id: string, categoryId: string): Promise<void> {
+  await pool.query(`UPDATE cj_product SET app_category_id = $1 WHERE id = $2`, [categoryId, id]);
 }

@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Header } from "@/components/layout/Header";
-import { Footer } from "@/components/layout/Footer";
 import { Breadcrumb } from "@/components/plp/Breadcrumb";
 
 const NAV_LINKS = [
@@ -37,7 +35,6 @@ export function AccountLayout({
 
   return (
     <>
-      <Header />
       <main className="flex-1">
         <div className="mx-auto max-w-[1280px] px-4 py-6">
           <Breadcrumb items={[{ label: "Home", href: "/" }, { label: "My Account", href: "/my-account" }, { label: title }]} />
@@ -86,7 +83,6 @@ export function AccountLayout({
           </div>
         </div>
       </main>
-      <Footer />
     </>
   );
 }

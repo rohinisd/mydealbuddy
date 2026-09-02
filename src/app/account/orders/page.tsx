@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
 import { AccountLayout } from "@/components/account/AccountLayout";
 import { getCurrentCustomer } from "@/lib/current-customer";
 import { listOrdersForCustomer } from "@/lib/orders";
@@ -19,6 +21,8 @@ export default async function OrdersPage() {
   const orders = await listOrdersForCustomer(customer.id);
 
   return (
+    <>
+    <Header />
     <AccountLayout title="Orders" customerFirstName={customer.firstName}>
       {orders.length === 0 ? (
         <p className="text-sm text-text-muted">You haven&apos;t placed any orders yet.</p>
@@ -58,5 +62,7 @@ export default async function OrdersPage() {
         </div>
       )}
     </AccountLayout>
+    <Footer />
+    </>
   );
 }
