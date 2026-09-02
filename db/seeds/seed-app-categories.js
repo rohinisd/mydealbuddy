@@ -12,7 +12,7 @@
 // reviews, order line items) right along with it. This happened once
 // during development; DELETE fails per-row instead if a category is
 // actually still referenced by a product, rather than cascading.
-require("dotenv").config({ path: require("path").join(__dirname, "..", "..", ".env.local") });
+require("dotenv").config({ path: require("path").join(__dirname, "..", "..", ".env.local"), quiet: true });
 const fs = require("fs");
 const path = require("path");
 const { Pool } = require("pg");
