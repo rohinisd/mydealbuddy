@@ -124,9 +124,8 @@ export function CartPageContent() {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <Link href={`/product/${product.slug}`} className="font-bold text-text-primary hover:text-accent">
-                        {product.brand}
+                        {product.name}
                       </Link>
-                      <p className="text-sm text-text-secondary">{product.name}</p>
                       {line.option && <p className="mt-0.5 text-xs text-text-muted">Option: {line.option}</p>}
                     </div>
                     <p className="font-bold text-text-primary">${(product.price * line.quantity).toFixed(2)}</p>
@@ -287,9 +286,8 @@ export function CartPageContent() {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <Link href={`/product/${product.slug}`} className="font-bold text-text-primary hover:text-accent">
-                        {product.brand}
+                        {product.name}
                       </Link>
-                      <p className="text-sm text-text-secondary">{product.name}</p>
                       {line.option && <p className="mt-0.5 text-xs text-text-muted">Option: {line.option}</p>}
                     </div>
                     <p className="font-bold text-text-primary">${(product.price * line.quantity).toFixed(2)}</p>

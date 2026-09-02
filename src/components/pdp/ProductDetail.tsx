@@ -144,8 +144,7 @@ export function ProductDetail({
 
         {/* Buy rail */}
         <div className="lg:sticky lg:top-24 lg:self-start">
-          <p className="text-lg font-bold text-text-primary">{product.brand}</p>
-          <p className="mt-0.5 text-sm text-text-secondary">{product.name}</p>
+          <p className="text-lg font-bold text-text-primary">{product.name}</p>
 
           {product.rating && (
             <a href="#reviews" className="mt-2 inline-flex items-center gap-1.5 text-sm">
@@ -330,10 +329,6 @@ export function ProductDetail({
           <p className="text-sm leading-relaxed text-text-secondary">No description available for this product yet.</p>
         )}
         <dl className="mt-5 grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
-          <div className="flex justify-between border-b border-border py-2 sm:justify-start sm:gap-4">
-            <dt className="text-text-muted">Brand</dt>
-            <dd className="font-medium text-text-primary">{product.brand}</dd>
-          </div>
           <div className="flex justify-between border-b border-border py-2 sm:justify-start sm:gap-4">
             <dt className="text-text-muted">Category</dt>
             <dd className="font-medium text-text-primary">{product.categoryLabel}</dd>

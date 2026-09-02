@@ -1,6 +1,5 @@
 export interface PLPFilters {
   categories: string[];
-  brands: string[];
   priceBucket: string | null;
   discountMin: number | null;
   ratingMin: number | null;
@@ -10,7 +9,6 @@ export interface PLPFilters {
 
 export const DEFAULT_FILTERS: PLPFilters = {
   categories: [],
-  brands: [],
   priceBucket: null,
   discountMin: null,
   ratingMin: null,

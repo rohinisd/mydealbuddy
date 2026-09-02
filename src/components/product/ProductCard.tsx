@@ -105,8 +105,7 @@ export function ProductCard({ product }: { product: Product }) {
 
       <div className="mt-2 space-y-0.5">
         <Link href={`/product/${product.slug}`} className="block">
-          <p className="text-sm font-bold text-text-primary">{product.brand}</p>
-          <p className="line-clamp-1 text-sm text-text-secondary">{product.name}</p>
+          <p className="line-clamp-1 text-sm font-bold text-text-primary">{product.name}</p>
         </Link>
 
         <div className="flex flex-wrap items-baseline gap-1.5 pt-0.5">

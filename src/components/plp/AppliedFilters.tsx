@@ -28,13 +28,6 @@ export function AppliedFilters({
       onRemove: () => onChange({ ...filters, categories: filters.categories.filter((s) => s !== slug) }),
     });
   }
-  for (const brand of filters.brands) {
-    chips.push({
-      key: `brand-${brand}`,
-      label: brand,
-      onRemove: () => onChange({ ...filters, brands: filters.brands.filter((b) => b !== brand) }),
-    });
-  }
   if (filters.priceBucket) {
     const bucket = PRICE_BUCKETS.find((b) => b.key === filters.priceBucket);
     if (bucket) chips.push({ key: "price", label: bucket.label, onRemove: () => onChange({ ...filters, priceBucket: null }) });

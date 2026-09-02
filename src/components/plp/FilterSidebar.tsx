@@ -1,11 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { ChevronDownIcon } from "@/components/icons/Icons";
 import type { FacetCounts } from "@/lib/plp";
 import { DEFAULT_FILTERS, DISCOUNT_BUCKETS, PRICE_BUCKETS, RATING_BUCKETS, type PLPFilters } from "@/types/plp";
-
-const BRAND_PREVIEW_COUNT = 6;
 
 function FilterSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -57,19 +54,7 @@ export function FilterSidebar({
   facets: FacetCounts;
   showHeading?: boolean;
 }) {
-  const [brandSearch, setBrandSearch] = useState("");
-  const [brandsExpanded, setBrandsExpanded] = useState(false);
-
-  const brandEntries = useMemo(
-    () =>
-      Object.entries(facets.brands)
-        .filter(([name]) => name.toLowerCase().includes(brandSearch.toLowerCase()))
-        .sort((a, b) => b[1] - a[1]),
-    [facets.brands, brandSearch]
-  );
-  const visibleBrands = brandsExpanded ? brandEntries : brandEntries.slice(0, BRAND_PREVIEW_COUNT);
-
-  function toggleInList(key: "categories" | "brands", value: string) {
+  function toggleInList(key: "categories", value: string) {
     const current = filters[key];
     const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
     onChange({ ...filters, [key]: next });
@@ -77,7 +62,6 @@ export function FilterSidebar({
 
   const hasActiveFilters =
     filters.categories.length > 0 ||
-    filters.brands.length > 0 ||
     filters.priceBucket !== null ||
     filters.discountMin !== null ||
     filters.ratingMin !== null ||
@@ -113,34 +97,6 @@ export function FilterSidebar({
               count={count}
             />
           ))}
-      </FilterSection>
-
-      <FilterSection title="Brand">
-        <input
-          type="text"
-          value={brandSearch}
-          onChange={(e) => setBrandSearch(e.target.value)}
-          placeholder="Search brand"
-          className="mb-2 w-full rounded border border-border-strong px-2 py-1.5 text-xs placeholder:text-text-muted focus:border-accent focus:outline-none"
-        />
-        {visibleBrands.map(([name, count]) => (
-          <Checkbox
-            key={name}
-            checked={filters.brands.includes(name)}
-            onChange={() => toggleInList("brands", name)}
-            label={name}
-            count={count}
-          />
-        ))}
-        {brandEntries.length > BRAND_PREVIEW_COUNT && (
-          <button
-            type="button"
-            onClick={() => setBrandsExpanded((v) => !v)}
-            className="mt-1 text-xs font-semibold text-accent hover:underline"
-          >
-            {brandsExpanded ? "Show less" : `+ ${brandEntries.length - BRAND_PREVIEW_COUNT} more`}
-          </button>
-        )}
       </FilterSection>
 
       <FilterSection title="Price">
