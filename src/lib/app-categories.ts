@@ -58,27 +58,21 @@ export async function getCategoryTree(): Promise<CategoryTop[]> {
   return assembleTree(res.rows.map(rowToCategory));
 }
 
+export interface NavCategory {
+  id: string;
+  slug: string;
+  name: string;
+  fullSlug: string;
+}
+
 // All 14 top-level categories always show, even ones with zero products yet
-// -- looks like a complete storefront rather than a half-built one. Groups
-// and leaves are still pruned to only ones with at least one active product,
-// so a populated top category's flyout doesn't list dozens of empty
-// subcategories while the catalog is still small.
-export async function getNavCategoryTree(): Promise<CategoryTop[]> {
-  const [allL1, populatedL2L3] = await Promise.all([
-    pool.query(`SELECT * FROM app_category WHERE level = 1 ORDER BY id`),
-    pool.query(
-      `SELECT ac.* FROM app_category ac
-       WHERE ac.level IN (2, 3) AND EXISTS (
-         SELECT 1 FROM cj_product p
-         WHERE p.is_active = true AND p.app_category_id IS NOT NULL AND (
-           (ac.level = 2 AND p.app_category_id IN (SELECT id FROM app_category WHERE l1_slug = ac.l1_slug AND l2_slug = ac.l2_slug)) OR
-           (ac.level = 3 AND p.app_category_id = ac.id)
-         )
-       )
-       ORDER BY ac.level, ac.id`
-    ),
-  ]);
-  return assembleTree([...allL1.rows, ...populatedL2L3.rows].map(rowToCategory));
+// -- looks like a complete storefront rather than a half-built one. Just the
+// flat top level: the nav has no subcategory flyout (removed -- each
+// category's own page already surfaces its real subcategories as tiles, via
+// getChildCategories, so a duplicate header dropdown was redundant).
+export async function getNavCategoryTree(): Promise<NavCategory[]> {
+  const res = await pool.query(`SELECT id, slug, name, full_slug FROM app_category WHERE level = 1 ORDER BY id`);
+  return res.rows.map((r) => ({ id: String(r.id), slug: r.slug, name: r.name, fullSlug: r.full_slug }));
 }
 
 function assembleTree(rows: CategoryRow[]): CategoryTop[] {

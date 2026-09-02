@@ -4,10 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/context/CartContext";
 import { SearchBar } from "@/components/layout/SearchBar";
-import { BagIcon, ChevronDownIcon, MenuIcon, UserIcon, XIcon } from "@/components/icons/Icons";
-import type { CategoryTop } from "@/lib/app-categories";
+import { BagIcon, MenuIcon, UserIcon, XIcon } from "@/components/icons/Icons";
+import type { NavCategory } from "@/lib/app-categories";
 
-export function HeaderNav({ categories }: { categories: CategoryTop[] }) {
+export function HeaderNav({ categories }: { categories: NavCategory[] }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const { totalCount } = useCart();
 
@@ -81,43 +81,13 @@ export function HeaderNav({ categories }: { categories: CategoryTop[] }) {
         <div className="mx-auto max-w-[1280px] px-4">
           <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-xs font-semibold text-text-primary">
             {categories.map((top) => (
-              <li key={top.id} className="group relative">
+              <li key={top.id}>
                 <Link
                   href={`/product-category/${top.fullSlug}`}
                   className="flex items-center gap-1 whitespace-nowrap py-1 uppercase tracking-wide hover:text-accent"
                 >
                   {top.name}
-                  {top.groups.length > 0 && <ChevronDownIcon className="h-3 w-3 shrink-0" />}
                 </Link>
-
-                {top.groups.length > 0 && (
-                  <div className="invisible absolute left-0 top-full z-50 max-h-[70vh] w-[720px] translate-y-1 overflow-y-auto rounded-md border border-border bg-white p-6 opacity-0 shadow-lg transition-all duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100">
-                    <div className="grid grid-cols-3 gap-x-6 gap-y-4">
-                      {top.groups.map((group) => (
-                        <div key={group.id}>
-                          <Link
-                            href={`/product-category/${group.fullSlug}`}
-                            className="mb-2 block text-xs font-bold uppercase text-text-muted hover:text-accent"
-                          >
-                            {group.name}
-                          </Link>
-                          <ul className="space-y-1.5">
-                            {group.leaves.map((leaf) => (
-                              <li key={leaf.id}>
-                                <Link
-                                  href={`/product-category/${leaf.fullSlug}`}
-                                  className="text-sm font-normal normal-case text-text-secondary hover:text-accent"
-                                >
-                                  {leaf.name}
-                                </Link>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </li>
             ))}
             <li>
