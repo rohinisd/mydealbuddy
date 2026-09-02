@@ -139,7 +139,14 @@ export async function syncProductByPid(pid: string, appCategoryId: string): Prom
   const weights = variants.map((v) => Number(v.variantWeight)).filter((n) => !Number.isNaN(n));
 
   const categoryId = await upsertCategory(detail.categoryId, detail.categoryName);
-  const brand = detail.supplierName?.trim() || "CJ Marketplace";
+  // Never show CJ's own supplier/factory name to customers -- names like
+  // "Guangzhou Manjiang Technology Co., Ltd." or the "CJ Marketplace"
+  // fallback both reveal the dropshipping sourcing chain, which the client
+  // doesn't want customers seeing (same reasoning as never naming the
+  // warehouse country in shipping estimates). MyDealBuddy is the actual
+  // seller of record here, so that's what's shown -- not fabricated, just
+  // the true party the customer is buying from.
+  const brand = "MyDealBuddy";
 
   const productResult = await pool.query(
     `INSERT INTO cj_product (

@@ -65,7 +65,7 @@ function rowToProduct(row: ProductRow, imageUrl: string | null, gallery: string[
     category: row.category_full_slug ?? "uncategorized",
     categoryLabel: row.category_l3_name ?? "Uncategorized",
     categoryPath,
-    brand: row.brand ?? "CJ Marketplace",
+    brand: row.brand ?? "MyDealBuddy",
     name: row.name_en,
     price,
     sku: row.spu ?? undefined,
