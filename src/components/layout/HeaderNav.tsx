@@ -26,7 +26,9 @@ export function HeaderNav({ categories }: { categories: CategoryTop[] }) {
         </div>
       </div>
 
-      {/* Main row */}
+      {/* Main row: logo, search, account icons -- no category nav here, it's
+          crammed and forces multi-word labels to wrap mid-name. Categories
+          get their own full-width row below instead. */}
       <div className="mx-auto flex max-w-[1280px] items-center gap-4 px-4 py-3">
         <button
           type="button"
@@ -40,58 +42,6 @@ export function HeaderNav({ categories }: { categories: CategoryTop[] }) {
         <Link href="/" className="shrink-0 text-xl font-extrabold tracking-tight text-accent">
           MyDealBuddy
         </Link>
-
-        {/* Desktop mega-menu nav */}
-        <nav className="hidden md:block">
-          <ul className="flex items-center gap-5 text-sm font-semibold text-text-primary">
-            {categories.map((top) => (
-              <li key={top.id} className="group relative py-4">
-                <Link
-                  href={`/product-category/${top.fullSlug}`}
-                  className="flex items-center gap-1 uppercase tracking-wide hover:text-accent"
-                >
-                  {top.name}
-                  {top.groups.length > 0 && <ChevronDownIcon className="h-3.5 w-3.5" />}
-                </Link>
-
-                {top.groups.length > 0 && (
-                  <div className="invisible absolute left-1/2 top-full z-50 max-h-[70vh] w-[720px] -translate-x-1/2 translate-y-1 overflow-y-auto rounded-md border border-border bg-white p-6 opacity-0 shadow-lg transition-all duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100">
-                    <div className="grid grid-cols-3 gap-x-6 gap-y-4">
-                      {top.groups.map((group) => (
-                        <div key={group.id}>
-                          <Link
-                            href={`/product-category/${group.fullSlug}`}
-                            className="mb-2 block text-xs font-bold uppercase text-text-muted hover:text-accent"
-                          >
-                            {group.name}
-                          </Link>
-                          <ul className="space-y-1.5">
-                            {group.leaves.map((leaf) => (
-                              <li key={leaf.id}>
-                                <Link
-                                  href={`/product-category/${leaf.fullSlug}`}
-                                  className="text-sm font-normal normal-case text-text-secondary hover:text-accent"
-                                >
-                                  {leaf.name}
-                                </Link>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </li>
-            ))}
-            <li className="py-4">
-              <Link href="/deals" className="flex items-center gap-1 uppercase tracking-wide hover:text-accent">
-                Deals
-                <span className="rounded-sm bg-discount px-1 text-[10px] font-bold text-white">HOT</span>
-              </Link>
-            </li>
-          </ul>
-        </nav>
 
         {/* Search */}
         <SearchBar
@@ -122,6 +72,63 @@ export function HeaderNav({ categories }: { categories: CategoryTop[] }) {
           </Link>
         </div>
       </div>
+
+      {/* Category bar: its own full-width row so 14 real category names have
+          room to breathe. Each label stays on one line (whitespace-nowrap);
+          the row itself wraps to a second line on narrower screens instead
+          of forcing a horizontal scrollbar or shrinking to illegible text. */}
+      <nav className="hidden border-t border-border md:block">
+        <div className="mx-auto max-w-[1280px] px-4">
+          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-xs font-semibold text-text-primary">
+            {categories.map((top) => (
+              <li key={top.id} className="group relative">
+                <Link
+                  href={`/product-category/${top.fullSlug}`}
+                  className="flex items-center gap-1 whitespace-nowrap py-1 uppercase tracking-wide hover:text-accent"
+                >
+                  {top.name}
+                  {top.groups.length > 0 && <ChevronDownIcon className="h-3 w-3 shrink-0" />}
+                </Link>
+
+                {top.groups.length > 0 && (
+                  <div className="invisible absolute left-0 top-full z-50 max-h-[70vh] w-[720px] translate-y-1 overflow-y-auto rounded-md border border-border bg-white p-6 opacity-0 shadow-lg transition-all duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100">
+                    <div className="grid grid-cols-3 gap-x-6 gap-y-4">
+                      {top.groups.map((group) => (
+                        <div key={group.id}>
+                          <Link
+                            href={`/product-category/${group.fullSlug}`}
+                            className="mb-2 block text-xs font-bold uppercase text-text-muted hover:text-accent"
+                          >
+                            {group.name}
+                          </Link>
+                          <ul className="space-y-1.5">
+                            {group.leaves.map((leaf) => (
+                              <li key={leaf.id}>
+                                <Link
+                                  href={`/product-category/${leaf.fullSlug}`}
+                                  className="text-sm font-normal normal-case text-text-secondary hover:text-accent"
+                                >
+                                  {leaf.name}
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </li>
+            ))}
+            <li>
+              <Link href="/deals" className="flex items-center gap-1 whitespace-nowrap py-1 uppercase tracking-wide hover:text-accent">
+                Deals
+                <span className="rounded-sm bg-discount px-1 text-[10px] font-bold text-white">HOT</span>
+              </Link>
+            </li>
+          </ul>
+        </div>
+      </nav>
 
       {/* Mobile search (always visible under main row on small screens) */}
       <div className="border-t border-border px-4 py-2 md:hidden">
