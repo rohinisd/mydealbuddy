@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { AccountLayout } from "@/components/account/AccountLayout";
+import { ReorderButton } from "@/components/account/ReorderButton";
 import { getCurrentCustomer } from "@/lib/current-customer";
 import { listOrdersForCustomer } from "@/lib/orders";
 
@@ -37,9 +38,12 @@ export default async function OrdersPage() {
                     {new Date(order.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                   </p>
                 </div>
-                <span className="rounded-full bg-surface-soft px-2.5 py-1 text-xs font-semibold text-accent-ink">
-                  {STATUS_LABEL[order.status] ?? order.status}
-                </span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="rounded-full bg-surface-soft px-2.5 py-1 text-xs font-semibold text-accent-ink">
+                    {STATUS_LABEL[order.status] ?? order.status}
+                  </span>
+                  <ReorderButton lines={order.lines} />
+                </div>
               </div>
 
               <ul className="mt-3 space-y-1 text-sm text-text-secondary">

@@ -16,8 +16,6 @@ export function HeaderNav({ categories }: { categories: NavCategory[] }) {
       {/* Utility strip */}
       <div className="hidden bg-topbar text-white md:block">
         <div className="mx-auto flex max-w-[1280px] items-center justify-center gap-6 px-4 py-1.5 text-xs">
-          <Link href="/quick-order" className="hover:opacity-80">Quick Order</Link>
-          <span className="text-white/30">|</span>
           <Link href="/track-order" className="hover:opacity-80">Track Order</Link>
           <span className="text-white/30">|</span>
           <Link href="/account/buddy-coins" className="hover:opacity-80">Buddy Coins</Link>
