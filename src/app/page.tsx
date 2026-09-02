@@ -7,23 +7,28 @@ import { DealCard } from "@/components/home/DealCard";
 import { PromoBanner } from "@/components/home/PromoBanner";
 import { getAllProducts } from "@/lib/products";
 import { getActiveHomepageBlocks } from "@/lib/homepage-content";
+import { getCuratedListProducts } from "@/lib/curated-lists";
 
 // Without this, Next prerenders "/" once at build time and admin edits (products,
 // hero/promo/deal blocks) wouldn't show on the live site until the next deploy.
 export const revalidate = 60;
 
 export default async function Home() {
-  const [products, heroSlides, promoBanners, dealCards] = await Promise.all([
+  const [products, heroSlides, promoBanners, dealCards, dealOfTheDay, trendingDeals, newIn] = await Promise.all([
     getAllProducts(),
     getActiveHomepageBlocks("hero_slide"),
     getActiveHomepageBlocks("promo_banner"),
     getActiveHomepageBlocks("deal_card"),
+    getCuratedListProducts("deal-of-the-day", 1),
+    getCuratedListProducts("trending-deals"),
+    getCuratedListProducts("new-in"),
   ]);
-  // CJ-synced products have no rating/badge data yet (see scripts/sync-cj-products.js
-  // TODO), so "Top Collection" just falls back to catalog order and "Hot Trending
-  // Deals" will render empty until deal badges get assigned to real products.
+  // CJ-synced products have no rating data, so "Top Collection" just falls
+  // back to catalog order. Deal of the Day / Trending Deals / New In are all
+  // admin-curated real products (see /admin/curated-lists) -- each rail
+  // renders nothing until the admin actually picks something for it, rather
+  // than showing a fake placeholder.
   const TOP_COLLECTION = [...products].sort((a, b) => (b.ratingCount ?? 0) - (a.ratingCount ?? 0)).slice(0, 10);
-  const HOT_DEALS = products.filter((p) => p.badges?.includes("deal")).slice(0, 10);
 
   return (
     <>
@@ -36,7 +41,11 @@ export default async function Home() {
 
         <CategoryGrid />
 
-        <ProductRail pillLabel="Hot Trending Deals" title="Hot Trending Deals" viewAllHref="/deals" products={HOT_DEALS} />
+        <ProductRail pillLabel="Deal of the Day" title="Deal of the Day" viewAllHref="/deals" products={dealOfTheDay} />
+
+        <ProductRail pillLabel="Trending Deals" title="Trending Deals" viewAllHref="/deals" products={trendingDeals} />
+
+        <ProductRail pillLabel="New In" title="New In" viewAllHref="/shop" products={newIn} />
 
         {dealCards.length > 0 && (
           <section className="mx-auto max-w-[1280px] px-4 py-8">
