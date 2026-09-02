@@ -68,6 +68,31 @@ export async function sendOrderConfirmationEmail(
   );
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+export interface ContactNotificationInput {
+  name: string;
+  email: string;
+  subject?: string;
+  message: string;
+}
+
+// Unlike the other emails here, this carries raw customer-typed text (not
+// our own controlled data), so it gets escaped before going into HTML.
+export async function sendContactNotificationEmail(input: ContactNotificationInput): Promise<void> {
+  const supportInbox = process.env.SUPPORT_INBOX_EMAIL || "Help.allinoneonline@gmail.com";
+  await sendEmail(
+    supportInbox,
+    input.subject ? `Contact form: ${input.subject}` : `New contact form message from ${input.name}`,
+    `<p><strong>From:</strong> ${escapeHtml(input.name)} (${escapeHtml(input.email)})</p>
+     ${input.subject ? `<p><strong>Subject:</strong> ${escapeHtml(input.subject)}</p>` : ""}
+     <p><strong>Message:</strong></p>
+     <p>${escapeHtml(input.message).replace(/\n/g, "<br>")}</p>`
+  );
+}
+
 export interface CartAbandonmentLine {
   productName: string;
   quantity: number;
