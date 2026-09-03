@@ -3,8 +3,11 @@ import type { PoolClient } from "pg";
 import { pool } from "@/lib/db";
 import { getOrderById, rowToOrder, type Order } from "@/lib/orders";
 import { refundPaypalCapture } from "@/lib/paypal";
+import { refundStripePaymentIntent } from "@/lib/stripe";
 
 export class RefundError extends Error {}
+
+type RefundIdColumn = "paypal_refund_id" | "stripe_refund_id";
 
 /**
  * Marks an order refunded and claws back every Buddy Coin credited because
@@ -13,14 +16,18 @@ export class RefundError extends Error {}
  * who placed the order). The WHERE status='paid' guard makes this safe to
  * call twice (e.g. admin refund and a later webhook delivery for the same
  * event): the second call updates 0 rows and returns null.
+ *
+ * refundIdColumn is always one of two hardcoded literals (never user input),
+ * so interpolating it directly into the column list is safe.
  */
 async function markRefundedAndClawback(
   client: PoolClient,
   orderId: string,
+  refundIdColumn: RefundIdColumn,
   refundId: string
 ): Promise<Record<string, unknown> | null> {
   const res = await client.query(
-    `UPDATE customer_order SET status = 'refunded', refunded_at = now(), paypal_refund_id = $1
+    `UPDATE customer_order SET status = 'refunded', refunded_at = now(), ${refundIdColumn} = $1
      WHERE id = $2 AND status = 'paid' RETURNING *`,
     [refundId, orderId]
   );
@@ -41,25 +48,40 @@ async function markRefundedAndClawback(
   return res.rows[0];
 }
 
-/** Admin-initiated refund: calls PayPal, then marks the order refunded and claws back its Buddy Coins. */
+/** Admin-initiated refund: calls PayPal or Stripe (whichever the order was paid with), then marks the order refunded and claws back its Buddy Coins. */
 export async function refundOrder(orderId: string): Promise<Order> {
   const order = await getOrderById(orderId);
   if (!order) throw new RefundError("Order not found.");
   if (order.status !== "paid") throw new RefundError(`Order is ${order.status}, not paid -- nothing to refund.`);
-  if (!order.paypalCaptureId) throw new RefundError("Order has no PayPal capture to refund.");
 
-  const refund = await refundPaypalCapture(order.paypalCaptureId);
+  let refundIdColumn: RefundIdColumn;
+  let refundId: string;
+  let providerLabel: string;
+
+  if (order.paymentMethod === "stripe") {
+    if (!order.stripePaymentIntentId) throw new RefundError("Order has no Stripe payment to refund.");
+    const refund = await refundStripePaymentIntent(order.stripePaymentIntentId);
+    refundIdColumn = "stripe_refund_id";
+    refundId = refund.refundId;
+    providerLabel = "Stripe";
+  } else {
+    if (!order.paypalCaptureId) throw new RefundError("Order has no PayPal capture to refund.");
+    const refund = await refundPaypalCapture(order.paypalCaptureId);
+    refundIdColumn = "paypal_refund_id";
+    refundId = refund.refundId;
+    providerLabel = "PayPal";
+  }
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const row = await markRefundedAndClawback(client, orderId, refund.refundId);
+    const row = await markRefundedAndClawback(client, orderId, refundIdColumn, refundId);
     await client.query("COMMIT");
     if (!row) {
-      // PayPal already accepted the refund by this point -- can't undo that.
-      // Loud failure beats a silently stale order.
+      // The provider already accepted the refund by this point -- can't undo
+      // that. Loud failure beats a silently stale order.
       throw new RefundError(
-        `PayPal refund ${refund.refundId} succeeded but the order's status changed before it could be recorded -- check order ${orderId} manually.`
+        `${providerLabel} refund ${refundId} succeeded but the order's status changed before it could be recorded -- check order ${orderId} manually.`
       );
     }
     return rowToOrder(row, order.lines);
@@ -85,7 +107,28 @@ export async function markOrderRefundedByCaptureId(paypalCaptureId: string, refu
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await markRefundedAndClawback(client, String(orderId), refundId);
+    await markRefundedAndClawback(client, String(orderId), "paypal_refund_id", refundId);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/** Same idempotent webhook path as markOrderRefundedByCaptureId, for a refund issued directly in the Stripe dashboard. */
+export async function markOrderRefundedByStripePaymentIntentId(paymentIntentId: string, refundId: string): Promise<void> {
+  const orderRes = await pool.query(`SELECT id FROM customer_order WHERE stripe_payment_intent_id = $1`, [
+    paymentIntentId,
+  ]);
+  const orderId = orderRes.rows[0]?.id;
+  if (!orderId) return;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await markRefundedAndClawback(client, String(orderId), "stripe_refund_id", refundId);
     await client.query("COMMIT");
   } catch (err) {
     await client.query("ROLLBACK");

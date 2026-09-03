@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { Breadcrumb } from "@/components/plp/Breadcrumb";
 import { useCart } from "@/context/CartContext";
 import { useCoupon } from "@/context/CouponContext";
@@ -11,6 +13,96 @@ import { SHIPPING_COUNTRIES } from "@/data/countries";
 import { isValidPostalCode } from "@/lib/postal-codes";
 import type { Order } from "@/lib/orders";
 import type { CustomerAddress } from "@/lib/customer-addresses";
+
+// Created once at module scope, per Stripe.js's own recommendation. Blank
+// until the client's real test-mode publishable key is added to env --
+// callers must check STRIPE_PUBLISHABLE_KEY before relying on this.
+const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "";
+const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null;
+
+/**
+ * Renders inside <Elements>, which needs to exist before a real PaymentIntent
+ * does (so the card fields can render as soon as "Card" is selected, not
+ * after a round trip). Uses Stripe's deferred-intent pattern: validate the
+ * card fields, THEN create the real PaymentIntent server-side (fresh total,
+ * same "recompute at the moment of payment" approach as PayPal's createOrder
+ * callback), THEN confirm against that real clientSecret.
+ */
+function StripeCardForm({
+  disabled,
+  onError,
+  buildPayload,
+  onConfirmed,
+}: {
+  disabled: boolean;
+  onError: (message: string) => void;
+  buildPayload: () => Record<string, unknown> | null;
+  onConfirmed: (paymentIntentId: string) => Promise<void>;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handlePay() {
+    if (!stripe || !elements) return;
+    const payload = buildPayload();
+    if (!payload) return;
+
+    onError("");
+    setSubmitting(true);
+    try {
+      const { error: submitError } = await elements.submit();
+      if (submitError) {
+        onError(submitError.message || "Please check your card details.");
+        return;
+      }
+
+      const res = await fetch("/api/checkout/stripe/create-payment-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        onError(data.error || "Something went wrong starting card checkout.");
+        return;
+      }
+
+      const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
+        elements,
+        clientSecret: data.clientSecret,
+        redirect: "if_required",
+      });
+      if (confirmError) {
+        onError(confirmError.message || "Card payment failed.");
+        return;
+      }
+      if (paymentIntent?.status === "succeeded") {
+        await onConfirmed(data.paymentIntentId as string);
+      } else {
+        onError("Payment did not complete. Please try again.");
+      }
+    } catch {
+      onError("Something went wrong processing your card payment.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <PaymentElement />
+      <button
+        type="button"
+        disabled={disabled || submitting || !stripe}
+        onClick={handlePay}
+        className="btn-tracking w-full rounded-md bg-accent px-6 py-2.5 text-sm font-bold uppercase text-white hover:opacity-90 disabled:opacity-60"
+      >
+        {submitting ? "Processing..." : "Pay with Card"}
+      </button>
+    </div>
+  );
+}
 
 export function CheckoutPageContent({
   isGuest,
@@ -43,6 +135,8 @@ export function CheckoutPageContent({
   const [estimatedDays, setEstimatedDays] = useState<{ min: number; max: number } | null>(null);
   const [shippingCalculating, setShippingCalculating] = useState(false);
   const [shippingError, setShippingError] = useState<string | null>(null);
+  const [taxAmount, setTaxAmount] = useState(0);
+  const [paymentMethod, setPaymentMethod] = useState<"paypal" | "card">("paypal");
 
   useEffect(() => {
     if (isGuest) return;
@@ -76,6 +170,7 @@ export function CheckoutPageContent({
       setShippingCost(null);
       setEstimatedDays(null);
       setShippingError(null);
+      setTaxAmount(0);
       return;
     }
 
@@ -90,6 +185,7 @@ export function CheckoutPageContent({
           lines: lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
           countryCode,
           zip: trimmedZip,
+          province,
         }),
       })
         .then((r) => r.json())
@@ -99,13 +195,16 @@ export function CheckoutPageContent({
             setShippingCost(null);
             setEstimatedDays(null);
             setShippingError(data.error);
+            setTaxAmount(0);
           } else if (!data.shippable) {
             setShippingCost(null);
             setEstimatedDays(null);
             setShippingError("Some items in your cart can't be shipped to this address.");
+            setTaxAmount(0);
           } else {
             setShippingCost(data.total);
             setEstimatedDays(data.estimatedDays ?? null);
+            setTaxAmount(data.taxAmount ?? 0);
           }
         })
         .catch(() => {
@@ -113,6 +212,7 @@ export function CheckoutPageContent({
             setShippingCost(null);
             setEstimatedDays(null);
             setShippingError("Couldn't calculate shipping. Try again.");
+            setTaxAmount(0);
           }
         })
         .finally(() => {
@@ -125,7 +225,7 @@ export function CheckoutPageContent({
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- linesKey is the stable dependency, lines itself changes reference every render
-  }, [countryCode, zip, linesKey]);
+  }, [countryCode, zip, province, linesKey]);
 
   const { products, loading } = useProductsByIds(lines.map((l) => l.productId));
   const productById = new Map(products.map((p) => [p.id, p]));
@@ -134,7 +234,7 @@ export function CheckoutPageContent({
     .filter((r): r is { line: typeof lines[number]; product: NonNullable<typeof r.product> } => !!r.product);
   const subtotal = resolved.reduce((sum, r) => sum + r.product.price * r.line.quantity, 0);
   const couponDiscount = applied?.discountAmount ?? 0;
-  const total = Math.max(0, subtotal - couponDiscount) + (shippingCost ?? 0);
+  const total = Math.max(0, subtotal - couponDiscount) + (shippingCost ?? 0) + taxAmount;
   const readyForPayment = !shippingCalculating && shippingCost !== null && !shippingError;
 
   function currentShippingPayload() {
@@ -199,6 +299,45 @@ export function CheckoutPageContent({
     }
   }
 
+  function buildStripeCheckoutPayload(): Record<string, unknown> | null {
+    if (!formRef.current?.reportValidity()) return null;
+    return currentShippingPayload();
+  }
+
+  async function handleStripeConfirmed(paymentIntentId: string) {
+    const res = await fetch("/api/checkout/stripe/confirm-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paymentIntentId }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || "Something went wrong confirming your card payment.");
+      return;
+    }
+    setPlacedOrder(data.order);
+    clear();
+    clearCoupon();
+
+    if (!isGuest && saveAddress) {
+      const { shipping } = currentShippingPayload();
+      fetch("/api/account/addresses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: shipping.name,
+          phone: shipping.phone,
+          countryCode: shipping.countryCode,
+          country: shipping.country,
+          province: shipping.province,
+          city: shipping.city,
+          addressLine: shipping.address,
+          zip: shipping.zip,
+        }),
+      }).catch(() => {});
+    }
+  }
+
   if (loading) {
     return (
       <div className="mx-auto max-w-[1280px] px-4 py-6">
@@ -232,7 +371,7 @@ export function CheckoutPageContent({
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-20 text-center">
           <p className="text-lg font-bold text-text-primary">Order placed — {placedOrder.orderNumber}</p>
           <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-            Paid ${placedOrder.total.toFixed(2)} via PayPal.{" "}
+            Paid ${placedOrder.total.toFixed(2)} via {placedOrder.paymentMethod === "stripe" ? "card" : "PayPal"}.{" "}
             {placedOrder.buddyCoinsEarned > 0
               ? `You earned ${placedOrder.buddyCoinsEarned} Buddy Coins on this order.`
               : "Create an account next time to earn Buddy Coins on your orders."}
@@ -269,11 +408,6 @@ export function CheckoutPageContent({
     <div className="mx-auto max-w-[1280px] px-4 py-6">
       <Breadcrumb items={[{ label: "Home", href: "/" }, { label: "Cart", href: "/cart" }, { label: "Checkout" }]} />
       <h1 className="mb-6 mt-2 text-xl font-semibold text-text-primary md:text-2xl">Checkout</h1>
-
-      <div className="rounded-md border border-dashed border-discount bg-surface-soft px-4 py-3 text-sm text-text-secondary">
-        Payment runs through PayPal&apos;s sandbox right now — real API behavior, but no real money moves. Credit
-        card via Stripe isn&apos;t connected yet.
-      </div>
 
       {isGuest && (
         <div className="mt-3 rounded-md border border-border bg-surface-grey px-4 py-3 text-sm text-text-secondary">
@@ -385,15 +519,35 @@ export function CheckoutPageContent({
 
           <fieldset className="rounded-md border border-border p-4">
             <legend className="px-1 text-xs font-bold uppercase tracking-wide text-text-muted">Payment Method</legend>
-            <p className="mb-3 text-sm text-text-muted">Credit / Debit Card (Stripe) — connect credentials to enable</p>
+
+            <div className="mb-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPaymentMethod("paypal")}
+                className={`flex-1 rounded-md border px-3 py-2 text-sm font-semibold ${
+                  paymentMethod === "paypal" ? "border-accent bg-accent text-white" : "border-border-strong text-text-primary hover:border-accent"
+                }`}
+              >
+                PayPal
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentMethod("card")}
+                className={`flex-1 rounded-md border px-3 py-2 text-sm font-semibold ${
+                  paymentMethod === "card" ? "border-accent bg-accent text-white" : "border-border-strong text-text-primary hover:border-accent"
+                }`}
+              >
+                Credit / Debit Card
+              </button>
+            </div>
 
             {shippingCalculating ? (
               <p className="text-sm text-text-muted">Calculating shipping...</p>
             ) : shippingError ? (
               <p className="text-sm text-discount">Can&apos;t ship to this address.</p>
             ) : shippingCost === null ? (
-              <p className="text-sm text-text-muted">Enter your shipping address above to pay with PayPal.</p>
-            ) : (
+              <p className="text-sm text-text-muted">Enter your shipping address above to pay.</p>
+            ) : paymentMethod === "paypal" ? (
               <PayPalScriptProvider options={{ clientId: process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || "", currency: "USD" }}>
                 <PayPalButtons
                   disabled={!readyForPayment}
@@ -403,6 +557,17 @@ export function CheckoutPageContent({
                   onError={(err) => setError(`PayPal error: ${String(err)}`)}
                 />
               </PayPalScriptProvider>
+            ) : !stripePromise ? (
+              <p className="text-sm text-text-muted">Card payments aren&apos;t connected yet.</p>
+            ) : (
+              <Elements stripe={stripePromise} options={{ mode: "payment", amount: Math.max(50, Math.round(total * 100)), currency: "usd" }}>
+                <StripeCardForm
+                  disabled={!readyForPayment}
+                  onError={setError}
+                  buildPayload={buildStripeCheckoutPayload}
+                  onConfirmed={handleStripeConfirmed}
+                />
+              </Elements>
             )}
           </fieldset>
 
@@ -445,6 +610,12 @@ export function CheckoutPageContent({
               <div className="mt-2 flex justify-between text-sm text-price-note">
                 <span>Coupon ({applied?.code})</span>
                 <span>− ${couponDiscount.toFixed(2)}</span>
+              </div>
+            )}
+            {shippingCost !== null && (
+              <div className="mt-2 flex justify-between text-sm text-text-secondary">
+                <span>Tax</span>
+                <span>${taxAmount.toFixed(2)}</span>
               </div>
             )}
             <div className="mt-2 flex justify-between border-t border-border pt-4 text-base font-bold text-text-primary">

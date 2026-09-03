@@ -5,6 +5,7 @@ import { validateCoupon, incrementCouponUsage } from "@/lib/coupons";
 import { BUDDY_COINS_RATE } from "@/lib/cj-products";
 import { findCustomerById } from "@/lib/customers";
 import { getCartShippingEstimate } from "@/lib/cart-shipping";
+import { calculateTax } from "@/lib/tax";
 
 export const REFERRAL_BONUS_COINS = 50; // credited to the referrer
 export const REFERRED_SIGNUP_BONUS_COINS = 25; // credited to the new customer
@@ -24,13 +25,17 @@ export interface Order {
   subtotal: number;
   discountAmount: number;
   shippingAmount: number;
+  taxAmount: number;
   total: number;
   buddyCoinsEarned: number;
   couponCode: string | null;
   shippingEmail: string;
+  paymentMethod: "paypal" | "stripe";
   paypalOrderId: string | null;
   paypalCaptureId: string | null;
   paypalRefundId: string | null;
+  stripePaymentIntentId: string | null;
+  stripeRefundId: string | null;
   refundedAt: string | null;
   createdAt: string;
   lines: OrderLine[];
@@ -44,13 +49,17 @@ export function rowToOrder(row: Record<string, unknown>, lines: OrderLine[]): Or
     subtotal: Number(row.subtotal),
     discountAmount: Number(row.discount_amount),
     shippingAmount: Number(row.shipping_amount),
+    taxAmount: Number(row.tax_amount ?? 0),
     total: Number(row.total),
     buddyCoinsEarned: Number(row.buddy_coins_earned),
     couponCode: (row.coupon_code as string | null) ?? null,
     shippingEmail: row.shipping_email as string,
+    paymentMethod: (row.payment_method as Order["paymentMethod"]) ?? "paypal",
     paypalOrderId: (row.paypal_order_id as string | null) ?? null,
     paypalCaptureId: (row.paypal_capture_id as string | null) ?? null,
     paypalRefundId: (row.paypal_refund_id as string | null) ?? null,
+    stripePaymentIntentId: (row.stripe_payment_intent_id as string | null) ?? null,
+    stripeRefundId: (row.stripe_refund_id as string | null) ?? null,
     refundedAt: row.refunded_at ? new Date(row.refunded_at as string).toISOString() : null,
     createdAt: new Date(row.created_at as string).toISOString(),
     lines,
@@ -76,12 +85,15 @@ interface ResolvedOrder {
   discountAmount: number;
   couponCode: string | null;
   shippingAmount: number;
+  taxAmount: number;
   total: number;
   buddyCoinsEarned: number;
   shipping: ShippingInput;
   status: "pending_payment" | "paid";
+  paymentMethod: "paypal" | "stripe";
   paypalOrderId?: string;
   paypalCaptureId?: string;
+  stripePaymentIntentId?: string;
 }
 
 export class PlaceOrderError extends Error {}
@@ -96,10 +108,11 @@ async function insertOrderRecord(resolved: ResolvedOrder): Promise<Order> {
 
     const orderRes = await client.query(
       `INSERT INTO customer_order
-         (customer_id, order_number, status, subtotal, discount_amount, shipping_amount, total, buddy_coins_earned,
+         (customer_id, order_number, status, subtotal, discount_amount, shipping_amount, tax_amount, total, buddy_coins_earned,
           coupon_code, shipping_name, shipping_email, shipping_country_code, shipping_country, shipping_province,
-          shipping_city, shipping_address, shipping_zip, shipping_phone, paypal_order_id, paypal_capture_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+          shipping_city, shipping_address, shipping_zip, shipping_phone, payment_method, paypal_order_id, paypal_capture_id,
+          stripe_payment_intent_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
        RETURNING *`,
       [
         resolved.customerId,
@@ -108,6 +121,7 @@ async function insertOrderRecord(resolved: ResolvedOrder): Promise<Order> {
         resolved.subtotal,
         resolved.discountAmount,
         resolved.shippingAmount,
+        resolved.taxAmount,
         resolved.total,
         resolved.buddyCoinsEarned,
         resolved.couponCode,
@@ -120,8 +134,10 @@ async function insertOrderRecord(resolved: ResolvedOrder): Promise<Order> {
         resolved.shipping.address,
         resolved.shipping.zip || null,
         resolved.shipping.phone || null,
+        resolved.paymentMethod,
         resolved.paypalOrderId ?? null,
         resolved.paypalCaptureId ?? null,
+        resolved.stripePaymentIntentId ?? null,
       ]
     );
     const orderRow = orderRes.rows[0];
@@ -186,7 +202,9 @@ export interface ResolveOrderInput {
 }
 
 /** Re-fetches real prices/coupon/shipping server-side -- never trusts client-submitted amounts. */
-async function resolveOrder(input: ResolveOrderInput): Promise<Omit<ResolvedOrder, "status" | "paypalOrderId" | "paypalCaptureId">> {
+async function resolveOrder(
+  input: ResolveOrderInput
+): Promise<Omit<ResolvedOrder, "status" | "paymentMethod" | "paypalOrderId" | "paypalCaptureId" | "stripePaymentIntentId">> {
   if (input.lines.length === 0) throw new PlaceOrderError("Your cart is empty.");
 
   const products = await getProductsByIds(input.lines.map((l) => l.productId));
@@ -227,7 +245,9 @@ async function resolveOrder(input: ResolveOrderInput): Promise<Omit<ResolvedOrde
     throw new PlaceOrderError("One or more items in your cart can't be shipped to that address.");
   }
   const shippingAmount = shippingResult.total;
-  const total = Math.max(0, subtotal - discountAmount) + shippingAmount;
+  const taxableAmount = Math.max(0, subtotal - discountAmount);
+  const taxAmount = calculateTax(taxableAmount, input.shipping.countryCode, input.shipping.province);
+  const total = taxableAmount + shippingAmount + taxAmount;
   // Guests have no account to credit Buddy Coins to -- 0, not a phantom
   // amount that implies they earned something they didn't.
   const buddyCoinsEarned = input.customerId
@@ -241,6 +261,7 @@ async function resolveOrder(input: ResolveOrderInput): Promise<Omit<ResolvedOrde
     discountAmount,
     couponCode,
     shippingAmount,
+    taxAmount,
     total,
     buddyCoinsEarned,
     shipping: input.shipping,
@@ -249,19 +270,27 @@ async function resolveOrder(input: ResolveOrderInput): Promise<Omit<ResolvedOrde
 
 export type PlaceOrderInput = ResolveOrderInput;
 
-/** No-payment flow (kept for internal/testing use -- checkout itself now routes through PayPal). */
+/** No-payment flow (kept for internal/testing use -- checkout itself now routes through PayPal or Stripe). */
 export async function placeOrder(input: PlaceOrderInput): Promise<Order> {
   const resolved = await resolveOrder(input);
-  return insertOrderRecord({ ...resolved, status: "pending_payment" });
+  return insertOrderRecord({ ...resolved, status: "pending_payment", paymentMethod: "paypal" });
 }
 
 /** Used by the PayPal capture flow -- amounts are already resolved and stored server-side, not recomputed. */
 export async function insertPaidOrder(
-  resolved: Omit<ResolvedOrder, "status" | "paypalOrderId" | "paypalCaptureId">,
+  resolved: Omit<ResolvedOrder, "status" | "paymentMethod" | "paypalOrderId" | "paypalCaptureId" | "stripePaymentIntentId">,
   paypalOrderId: string,
   paypalCaptureId: string
 ): Promise<Order> {
-  return insertOrderRecord({ ...resolved, status: "paid", paypalOrderId, paypalCaptureId });
+  return insertOrderRecord({ ...resolved, status: "paid", paymentMethod: "paypal", paypalOrderId, paypalCaptureId });
+}
+
+/** Used by the Stripe confirm flow -- amounts are already resolved and stored server-side, not recomputed. */
+export async function insertPaidStripeOrder(
+  resolved: Omit<ResolvedOrder, "status" | "paymentMethod" | "paypalOrderId" | "paypalCaptureId" | "stripePaymentIntentId">,
+  stripePaymentIntentId: string
+): Promise<Order> {
+  return insertOrderRecord({ ...resolved, status: "paid", paymentMethod: "stripe", stripePaymentIntentId });
 }
 
 export { resolveOrder };

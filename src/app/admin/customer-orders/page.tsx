@@ -56,9 +56,10 @@ export default function AdminCustomerOrdersPage() {
   }
 
   async function handleRefund(order: AdminOrder) {
+    const providerLabel = order.paymentMethod === "stripe" ? "Stripe" : "PayPal";
     if (
       !confirm(
-        `Refund ${order.orderNumber} for $${order.total.toFixed(2)} via PayPal? This also claws back any Buddy Coins credited for this order. Cannot be undone.`
+        `Refund ${order.orderNumber} for $${order.total.toFixed(2)} via ${providerLabel}? This also claws back any Buddy Coins credited for this order. Cannot be undone.`
       )
     )
       return;
@@ -104,9 +105,16 @@ export default function AdminCustomerOrdersPage() {
                     {o.shippingEmail} · {new Date(o.createdAt).toLocaleString()}
                   </p>
                   <p className="text-xs text-text-muted">
-                    {o.paypalOrderId ? `PayPal order ${o.paypalOrderId}` : "no payment"}
+                    {o.paymentMethod === "stripe"
+                      ? o.stripePaymentIntentId
+                        ? `Stripe payment ${o.stripePaymentIntentId}`
+                        : "no payment"
+                      : o.paypalOrderId
+                        ? `PayPal order ${o.paypalOrderId}`
+                        : "no payment"}
                     {o.paypalCaptureId ? ` · capture ${o.paypalCaptureId}` : ""}
                     {o.paypalRefundId ? ` · refund ${o.paypalRefundId}` : ""}
+                    {o.stripeRefundId ? ` · refund ${o.stripeRefundId}` : ""}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
@@ -141,14 +149,14 @@ export default function AdminCustomerOrdersPage() {
               )}
 
               <div className="flex flex-wrap gap-2">
-                {o.status === "paid" && o.paypalCaptureId && (
+                {o.status === "paid" && (o.paypalCaptureId || o.stripePaymentIntentId) && (
                   <button
                     type="button"
                     disabled={busyId === o.id}
                     onClick={() => handleRefund(o)}
                     className="rounded-md border border-discount px-3 py-1 text-xs font-semibold text-discount hover:bg-discount/10 disabled:opacity-60"
                   >
-                    {busyId === o.id ? "Refunding..." : "Refund via PayPal"}
+                    {busyId === o.id ? "Refunding..." : `Refund via ${o.paymentMethod === "stripe" ? "Stripe" : "PayPal"}`}
                   </button>
                 )}
                 {o.cjFulfillment.some((f) => f.status === "failed") && (

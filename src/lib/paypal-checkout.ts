@@ -10,9 +10,9 @@ export async function createPendingPaypalOrder(input: ResolveOrderInput): Promis
 
   await pool.query(
     `INSERT INTO paypal_pending_order
-       (paypal_order_id, customer_id, lines_json, coupon_code, subtotal, discount_amount, shipping_amount, total,
-        buddy_coins_earned, shipping_json)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+       (paypal_order_id, customer_id, lines_json, coupon_code, subtotal, discount_amount, shipping_amount, tax_amount,
+        total, buddy_coins_earned, shipping_json)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
     [
       paypalOrderId,
       resolved.customerId,
@@ -21,6 +21,7 @@ export async function createPendingPaypalOrder(input: ResolveOrderInput): Promis
       resolved.subtotal,
       resolved.discountAmount,
       resolved.shippingAmount,
+      resolved.taxAmount,
       resolved.total,
       resolved.buddyCoinsEarned,
       JSON.stringify(resolved.shipping),
@@ -58,6 +59,7 @@ export async function capturePendingPaypalOrder(paypalOrderId: string): Promise<
       discountAmount: Number(pending.discount_amount),
       couponCode: pending.coupon_code,
       shippingAmount: Number(pending.shipping_amount),
+      taxAmount: Number(pending.tax_amount),
       total: Number(pending.total),
       buddyCoinsEarned: Number(pending.buddy_coins_earned),
       shipping: pending.shipping_json,
