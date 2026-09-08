@@ -8,7 +8,7 @@ const NAV_LINKS = [
   { label: "Overview", href: "/my-account" },
   { label: "Orders", href: "/account/orders" },
   { label: "Addresses", href: "/account/addresses" },
-  { label: "Wishlist", href: "/wishlist" },
+  { label: "Wishlist", href: "/account/wishlist" },
   { label: "Buddy Coins", href: "/account/buddy-coins" },
   { label: "Referrals", href: "/account/referrals" },
 ];
