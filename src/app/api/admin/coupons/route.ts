@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
       minOrderValue: body?.minOrderValue != null ? Number(body.minOrderValue) : null,
       maxUses: body?.maxUses != null ? Number(body.maxUses) : null,
       expiresAt: body?.expiresAt || null,
+      isPublic: typeof body?.isPublic === "boolean" ? body.isPublic : true,
     });
     return NextResponse.json({ ok: true, coupon });
   } catch (err) {

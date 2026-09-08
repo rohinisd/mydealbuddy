@@ -12,6 +12,7 @@ export default function AdminCouponsPage() {
   const [discountValue, setDiscountValue] = useState("");
   const [minOrderValue, setMinOrderValue] = useState("");
   const [maxUses, setMaxUses] = useState("");
+  const [isPublic, setIsPublic] = useState(true);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -41,6 +42,7 @@ export default function AdminCouponsPage() {
           discountValue: Number(discountValue),
           minOrderValue: minOrderValue ? Number(minOrderValue) : null,
           maxUses: maxUses ? Number(maxUses) : null,
+          isPublic,
         }),
       });
       const data = await res.json();
@@ -53,6 +55,7 @@ export default function AdminCouponsPage() {
       setDiscountValue("");
       setMinOrderValue("");
       setMaxUses("");
+      setIsPublic(true);
       await loadCoupons();
     } finally {
       setCreating(false);
@@ -66,6 +69,20 @@ export default function AdminCouponsPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !coupon.isActive }),
+      });
+      await loadCoupons();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function togglePublic(coupon: Coupon) {
+    setBusyId(coupon.id);
+    try {
+      await fetch(`/api/admin/coupons/${coupon.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isPublic: !coupon.isPublic }),
       });
       await loadCoupons();
     } finally {
@@ -122,6 +139,10 @@ export default function AdminCouponsPage() {
           placeholder="Max uses"
           className="rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
         />
+        <label className="col-span-2 flex items-center gap-2 text-sm text-text-secondary sm:col-span-6">
+          <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
+          Show publicly to customers (cart &amp; account coupon list) — uncheck for a private/targeted code
+        </label>
         <button
           type="submit"
           disabled={creating}
@@ -150,11 +171,26 @@ export default function AdminCouponsPage() {
               </div>
               <span
                 className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  c.isPublic ? "bg-surface-soft text-accent-ink" : "bg-surface-grey text-text-muted"
+                }`}
+              >
+                {c.isPublic ? "Public" : "Private"}
+              </span>
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
                   c.isActive ? "bg-surface-soft text-accent-ink" : "bg-surface-grey text-text-muted"
                 }`}
               >
                 {c.isActive ? "Active" : "Inactive"}
               </span>
+              <button
+                type="button"
+                disabled={busyId === c.id}
+                onClick={() => togglePublic(c)}
+                className="shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-xs font-semibold text-text-primary hover:border-accent disabled:opacity-60"
+              >
+                {c.isPublic ? "Make Private" : "Make Public"}
+              </button>
               <button
                 type="button"
                 disabled={busyId === c.id}

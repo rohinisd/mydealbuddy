@@ -11,9 +11,10 @@ const NAV_LINKS = [
   { label: "Wishlist", href: "/account/wishlist" },
   { label: "Buddy Coins", href: "/account/buddy-coins" },
   { label: "Referrals", href: "/account/referrals" },
+  { label: "Coupons", href: "/account/coupons" },
 ];
 
-const COMING_SOON = ["Coupons", "Profile", "Saved Payments"];
+const COMING_SOON = ["Profile", "Saved Payments"];
 
 export function AccountLayout({
   title,

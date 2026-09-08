@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/plp/Breadcrumb";
 import { CoinIcon } from "@/components/icons/Icons";
@@ -10,6 +10,13 @@ import { useCoupon } from "@/context/CouponContext";
 import { useSavedForLater } from "@/context/SavedForLaterContext";
 import { useProductsByIds } from "@/hooks/useProductsByIds";
 
+interface AvailableCoupon {
+  code: string;
+  discountType: "percent" | "fixed";
+  discountValue: number;
+  minOrderValue: number | null;
+}
+
 export function CartPageContent() {
   const { lines, addItem, removeItem, setQuantity } = useCart();
   const { toggle: toggleWishlist } = useWishlist();
@@ -18,6 +25,16 @@ export function CartPageContent() {
   const [coupon, setCoupon] = useState("");
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
   const [applyingCoupon, setApplyingCoupon] = useState(false);
+  const [availableCoupons, setAvailableCoupons] = useState<AvailableCoupon[]>([]);
+
+  useEffect(() => {
+    fetch("/api/coupons")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setAvailableCoupons(data);
+      })
+      .catch(() => {});
+  }, []);
 
   const allProductIds = [...lines.map((l) => l.productId), ...savedLines.map((l) => l.productId)];
   const { products, loading } = useProductsByIds(allProductIds);
@@ -55,16 +72,15 @@ export function CartPageContent() {
   const couponDiscount = applied?.discountAmount ?? 0;
   const total = Math.max(0, subtotal - couponDiscount);
 
-  async function handleApplyCoupon(e: React.FormEvent) {
-    e.preventDefault();
-    if (!coupon.trim()) return;
+  async function applyCode(codeToApply: string) {
+    if (!codeToApply.trim()) return;
     setApplyingCoupon(true);
     setCouponMessage(null);
     try {
       const res = await fetch("/api/coupons/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: coupon.trim(), subtotal }),
+        body: JSON.stringify({ code: codeToApply.trim(), subtotal }),
       });
       const data = await res.json();
       if (!data.valid) {
@@ -72,13 +88,23 @@ export function CartPageContent() {
         setCouponMessage(data.reason || "That coupon code isn't valid.");
         return;
       }
-      setApplied({ code: coupon.trim().toUpperCase(), discountAmount: data.discountAmount });
+      setApplied({ code: codeToApply.trim().toUpperCase(), discountAmount: data.discountAmount });
       setCouponMessage(`Coupon applied — $${data.discountAmount.toFixed(2)} off.`);
     } catch {
       setCouponMessage("Couldn't validate that coupon. Try again.");
     } finally {
       setApplyingCoupon(false);
     }
+  }
+
+  async function handleApplyCoupon(e: React.FormEvent) {
+    e.preventDefault();
+    await applyCode(coupon);
+  }
+
+  async function handleUseAvailableCoupon(code: string) {
+    setCoupon(code);
+    await applyCode(code);
   }
 
   function handleRemoveCoupon() {
@@ -233,6 +259,28 @@ export function CartPageContent() {
                   </form>
                 )}
                 {couponMessage && <p className="mt-2 text-xs text-text-secondary">{couponMessage}</p>}
+
+                {!applied && availableCoupons.length > 0 && (
+                  <div className="mt-3 space-y-1.5">
+                    {availableCoupons.map((c) => (
+                      <div key={c.code} className="flex items-center justify-between gap-2 rounded-md bg-surface-soft px-3 py-1.5 text-xs">
+                        <span>
+                          <span className="font-bold text-accent-ink">{c.code}</span>{" "}
+                          {c.discountType === "percent" ? `${c.discountValue}% off` : `$${c.discountValue} off`}
+                          {c.minOrderValue != null && ` (min $${c.minOrderValue.toFixed(2)})`}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={applyingCoupon}
+                          onClick={() => handleUseAvailableCoupon(c.code)}
+                          className="shrink-0 font-semibold text-accent hover:underline disabled:opacity-60"
+                        >
+                          Use
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {buddyCoinsTotal > 0 && (

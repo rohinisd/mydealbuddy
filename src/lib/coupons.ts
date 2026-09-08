@@ -10,6 +10,7 @@ export interface Coupon {
   maxUses: number | null;
   timesUsed: number;
   isActive: boolean;
+  isPublic: boolean;
   expiresAt: string | null;
 }
 
@@ -30,6 +31,7 @@ function rowToCoupon(row: Record<string, unknown>): Coupon {
     maxUses: row.max_uses != null ? Number(row.max_uses) : null,
     timesUsed: Number(row.times_used),
     isActive: row.is_active as boolean,
+    isPublic: row.is_public as boolean,
     expiresAt: row.expires_at ? new Date(row.expires_at as string).toISOString() : null,
   };
 }
@@ -71,10 +73,11 @@ export async function createCoupon(input: {
   minOrderValue?: number | null;
   maxUses?: number | null;
   expiresAt?: string | null;
+  isPublic?: boolean;
 }): Promise<Coupon> {
   const res = await pool.query(
-    `INSERT INTO coupon (code, discount_type, discount_value, min_order_value, max_uses, expires_at)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    `INSERT INTO coupon (code, discount_type, discount_value, min_order_value, max_uses, expires_at, is_public)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
     [
       input.code.trim().toUpperCase(),
       input.discountType,
@@ -82,6 +85,7 @@ export async function createCoupon(input: {
       input.minOrderValue ?? null,
       input.maxUses ?? null,
       input.expiresAt ?? null,
+      input.isPublic ?? true,
     ]
   );
   return rowToCoupon(res.rows[0]);
@@ -89,6 +93,26 @@ export async function createCoupon(input: {
 
 export async function setCouponActive(id: string, isActive: boolean): Promise<void> {
   await pool.query(`UPDATE coupon SET is_active = $1 WHERE id = $2`, [isActive, id]);
+}
+
+export async function setCouponPublic(id: string, isPublic: boolean): Promise<void> {
+  await pool.query(`UPDATE coupon SET is_public = $1 WHERE id = $2`, [isPublic, id]);
+}
+
+/**
+ * What customers actually get to see (cart banner, /account/coupons) --
+ * active, publicly advertised, not expired, and (when capped) not already
+ * maxed out, since showing a code nobody can redeem would just be confusing.
+ */
+export async function listPublicActiveCoupons(): Promise<Coupon[]> {
+  const res = await pool.query(
+    `SELECT * FROM coupon
+     WHERE is_active = true AND is_public = true
+       AND (expires_at IS NULL OR expires_at > now())
+       AND (max_uses IS NULL OR times_used < max_uses)
+     ORDER BY created_at DESC`
+  );
+  return res.rows.map(rowToCoupon);
 }
 
 export async function incrementCouponUsage(code: string): Promise<void> {
