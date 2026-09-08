@@ -15,10 +15,16 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
     return;
   }
 
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const brandedHtml = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto">
+    <div style="padding:16px 0"><img src="${siteUrl}/logo-wordmark.png" alt="MyDealBuddy" height="40" style="height:40px;width:auto" /></div>
+    <div>${html}</div>
+  </div>`;
+
   const res = await fetch(`${RESEND_API_BASE}/emails`, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to, subject, html }),
+    body: JSON.stringify({ from, to, subject, html: brandedHtml }),
   });
 
   if (!res.ok) {

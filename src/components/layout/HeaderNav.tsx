@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useCart } from "@/context/CartContext";
 import { SearchBar } from "@/components/layout/SearchBar";
 import { BagIcon, MenuIcon, UserIcon, XIcon } from "@/components/icons/Icons";
@@ -37,8 +38,8 @@ export function HeaderNav({ categories }: { categories: NavCategory[] }) {
           {mobileNavOpen ? <XIcon className="h-6 w-6" /> : <MenuIcon className="h-6 w-6" />}
         </button>
 
-        <Link href="/" className="shrink-0 text-xl font-extrabold tracking-tight text-accent">
-          MyDealBuddy
+        <Link href="/" className="shrink-0">
+          <Image src="/logo-wordmark.png" alt="MyDealBuddy" width={180} height={48} className="h-9 w-auto md:h-10" priority />
         </Link>
 
         {/* Search */}

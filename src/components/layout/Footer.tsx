@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { getNavCategoryTree } from "@/lib/app-categories";
 import { NewsletterForm } from "@/components/layout/NewsletterForm";
 
@@ -94,7 +95,10 @@ export async function Footer() {
 
       <div className="border-t border-border">
         <div className="mx-auto flex max-w-[1280px] flex-col items-center justify-between gap-2 px-4 py-4 text-xs text-text-muted md:flex-row">
-          <p>© {new Date().getFullYear()} MyDealBuddy. Shop. Save. Earn. Share.</p>
+          <div className="flex items-center gap-2">
+            <Image src="/logo-wordmark.png" alt="MyDealBuddy" width={120} height={32} className="h-6 w-auto" />
+            <p>© {new Date().getFullYear()}. Shop. Save. Earn. Share.</p>
+          </div>
           <p>Help.allinoneonline@gmail.com</p>
         </div>
       </div>
