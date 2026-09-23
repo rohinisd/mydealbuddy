@@ -71,6 +71,7 @@ function StripeCardForm({
       const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
         elements,
         clientSecret: data.clientSecret,
+        confirmParams: { return_url: `${window.location.origin}/checkout` },
         redirect: "if_required",
       });
       if (confirmError) {
@@ -560,7 +561,15 @@ export function CheckoutPageContent({
             ) : !stripePromise ? (
               <p className="text-sm text-text-muted">Card payments aren&apos;t connected yet.</p>
             ) : (
-              <Elements stripe={stripePromise} options={{ mode: "payment", amount: Math.max(50, Math.round(total * 100)), currency: "usd" }}>
+              <Elements
+                stripe={stripePromise}
+                options={{
+                  mode: "payment",
+                  amount: Math.max(50, Math.round(total * 100)),
+                  currency: "usd",
+                  paymentMethodTypes: ["card"],
+                }}
+              >
                 <StripeCardForm
                   disabled={!readyForPayment}
                   onError={setError}

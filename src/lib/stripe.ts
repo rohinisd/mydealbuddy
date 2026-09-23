@@ -33,7 +33,14 @@ export async function createStripePaymentIntent(amount: number, currency = "usd"
   const intent = await stripe.paymentIntents.create({
     amount: Math.round(amount * 100),
     currency,
-    automatic_payment_methods: { enabled: true },
+    // Card only, not automatic_payment_methods -- redirect-based methods
+    // (Klarna, bank transfers, Amazon Pay) need a return trip through
+    // return_url that this checkout page doesn't have a resume handler for.
+    // Cards can still trigger a 3D Secure challenge, which return_url also
+    // covers, but that's handled in-page/modally under redirect:"if_required"
+    // for the vast majority of cards -- a genuine full-page 3DS redirect is
+    // the one gap this doesn't resume from.
+    payment_method_types: ["card"],
   });
   if (!intent.client_secret) throw new Error("Stripe did not return a client secret for the new PaymentIntent.");
   return { paymentIntentId: intent.id, clientSecret: intent.client_secret };
