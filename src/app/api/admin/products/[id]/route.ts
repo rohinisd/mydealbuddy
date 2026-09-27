@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { setProductActive, setProductBadges } from "@/lib/cj-sync";
-import { getProductDetailForAdmin, setProductOverridePrice, setProductCategory } from "@/lib/admin-products";
+import {
+  getProductDetailForAdmin,
+  setProductOverridePrice,
+  setProductCategory,
+  deleteProduct,
+  ProductHasOrdersError,
+} from "@/lib/admin-products";
 import { getCategoryById } from "@/lib/app-categories";
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -43,4 +49,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  try {
+    await deleteProduct(id);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    if (err instanceof ProductHasOrdersError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
+    console.error("Failed to delete product:", err);
+    return NextResponse.json({ error: "Something went wrong deleting this product." }, { status: 500 });
+  }
 }

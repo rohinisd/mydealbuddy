@@ -117,6 +117,28 @@ export async function setProductOverridePrice(id: string, price: number | null):
   await pool.query(`UPDATE cj_product SET override_price = $1 WHERE id = $2`, [price, id]);
 }
 
+export class ProductHasOrdersError extends Error {}
+
+/**
+ * Images/videos/reviews/variants/curated-list entries cascade-delete cleanly
+ * (ON DELETE CASCADE). Order lines, cart items, and CJ fulfillment records
+ * deliberately don't -- Postgres blocks the delete with a foreign_key_violation
+ * (23503) rather than silently erasing real order history. Deactivate is the
+ * right move for a product with that history; this only removes ones with none.
+ */
+export async function deleteProduct(id: string): Promise<void> {
+  try {
+    await pool.query(`DELETE FROM cj_product WHERE id = $1`, [id]);
+  } catch (err) {
+    if (err && typeof err === "object" && "code" in err && err.code === "23503") {
+      throw new ProductHasOrdersError(
+        "This product has order or cart history and can't be deleted -- deactivate it instead."
+      );
+    }
+    throw err;
+  }
+}
+
 export async function setProductCategory(id: string, categoryId: string): Promise<void> {
   await pool.query(`UPDATE cj_product SET app_category_id = $1 WHERE id = $2`, [categoryId, id]);
 }

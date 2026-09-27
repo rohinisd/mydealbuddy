@@ -21,6 +21,8 @@ export default function AdminPage() {
   const [adding, setAdding] = useState(false);
   const [results, setResults] = useState<BulkAddResult[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [needsPriceOnly, setNeedsPriceOnly] = useState(false);
 
   async function loadProducts() {
     setLoading(true);
@@ -111,6 +113,28 @@ export default function AdminPage() {
     router.push("/admin/login");
   }
 
+  async function handleDelete(product: AdminProductRow) {
+    if (!confirm(`Delete "${product.nameEn}" permanently? This removes its images, videos, and reviews too. Cannot be undone.`)) {
+      return;
+    }
+    setBusyId(product.id);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/admin/products/${product.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.error || "Failed to delete product.");
+        return;
+      }
+      await loadProducts();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const visibleProducts = needsPriceOnly ? products.filter((p) => p.overridePrice == null) : products;
+  const needsPriceCount = products.filter((p) => p.overridePrice == null).length;
+
   return (
     <div className="mx-auto max-w-[1000px] px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
@@ -181,13 +205,30 @@ export default function AdminPage() {
         )}
       </form>
 
+      {products.length > 0 && (
+        <div className="mb-3 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setNeedsPriceOnly((v) => !v)}
+            className={`rounded-md border px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${
+              needsPriceOnly ? "border-discount bg-discount text-white" : "border-border-strong text-text-primary hover:border-accent"
+            }`}
+          >
+            {needsPriceOnly ? "Showing: Needs Final Price" : `Needs Final Price (${needsPriceCount})`}
+          </button>
+          {message && <p className="text-sm text-discount">{message}</p>}
+        </div>
+      )}
+
       {loading ? (
         <p className="text-sm text-text-muted">Loading...</p>
       ) : products.length === 0 ? (
         <p className="text-sm text-text-muted">No products yet.</p>
+      ) : visibleProducts.length === 0 ? (
+        <p className="text-sm text-text-muted">Every product already has a final selling price set.</p>
       ) : (
         <div className="divide-y divide-border rounded-md border border-border">
-          {products.map((p) => (
+          {visibleProducts.map((p) => (
             <div key={p.id} className="flex items-center gap-3 p-3">
               <Link href={`/admin/products/${p.id}`} className="h-12 w-12 shrink-0 overflow-hidden rounded border border-border bg-surface-grey">
                 {p.mainImageUrl && (
@@ -204,7 +245,12 @@ export default function AdminPage() {
                     <span className="font-semibold text-discount">Uncategorized</span>
                   )}{" "}
                   · ${(p.overridePrice ?? p.priceMin)?.toFixed(2) ?? "—"}
-                  {p.overridePrice != null && <span className="text-accent-ink"> (your price)</span>} · pid {p.pid}
+                  {p.overridePrice != null ? (
+                    <span className="text-accent-ink"> (your price)</span>
+                  ) : (
+                    <span className="font-semibold text-discount"> · Needs Final Price</span>
+                  )}{" "}
+                  · pid {p.pid}
                 </p>
               </Link>
               <span
@@ -238,6 +284,14 @@ export default function AdminPage() {
                 className="shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-xs font-semibold text-text-primary hover:border-accent disabled:opacity-60"
               >
                 {p.isActive ? "Deactivate" : "Activate"}
+              </button>
+              <button
+                type="button"
+                disabled={busyId === p.id}
+                onClick={() => handleDelete(p)}
+                className="shrink-0 rounded-md border border-discount px-3 py-1.5 text-xs font-semibold text-discount hover:bg-discount/10 disabled:opacity-60"
+              >
+                Delete
               </button>
             </div>
           ))}
