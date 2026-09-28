@@ -90,6 +90,11 @@ export async function refundPaypalCapture(captureId: string): Promise<PaypalRefu
   return { refundId: data.id as string, status: data.status as string };
 }
 
+/** Confirms PAYPAL_CLIENT_ID/SECRET still authenticate, without exposing the token itself. */
+export async function checkPaypalAuth(): Promise<void> {
+  await getAccessToken();
+}
+
 export interface PaypalWebhookHeaders {
   transmissionId: string;
   transmissionTime: string;

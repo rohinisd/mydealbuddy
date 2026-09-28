@@ -56,7 +56,7 @@ interface CjProductDetail {
   variants?: CjVariant[];
 }
 
-async function cjFetch(path: string): Promise<Record<string, unknown>> {
+export async function cjFetch(path: string): Promise<Record<string, unknown>> {
   const token = process.env.CJ_ACCESS_TOKEN;
   if (!token) throw new Error("CJ_ACCESS_TOKEN missing from environment");
   const res = await fetch(`${CJ_API_BASE}${path}`, {
