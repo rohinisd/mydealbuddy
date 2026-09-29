@@ -26,6 +26,12 @@ export default function AdminProductDetailPage() {
   const [categorySaving, setCategorySaving] = useState(false);
   const [categoryMessage, setCategoryMessage] = useState<string | null>(null);
 
+  const [shippingCost, setShippingCost] = useState<number | null>(null);
+  const [shippingLoading, setShippingLoading] = useState(false);
+  const [shippingError, setShippingError] = useState<string | null>(null);
+  const [markupType, setMarkupType] = useState<"percent" | "dollar">("percent");
+  const [markupValue, setMarkupValue] = useState("");
+
   const [images, setImages] = useState<ProductImageRow[]>([]);
   const [videos, setVideos] = useState<ProductVideoRow[]>([]);
   const [mediaBusy, setMediaBusy] = useState(false);
@@ -146,6 +152,24 @@ export default function AdminProductDetailPage() {
     }
   }
 
+  async function handleFetchShippingCost() {
+    setShippingLoading(true);
+    setShippingError(null);
+    try {
+      const res = await fetch(`/api/admin/products/${id}/shipping-cost`);
+      const data = await res.json();
+      if (!res.ok) {
+        setShippingError(data.error || "Failed to fetch shipping cost.");
+        return;
+      }
+      setShippingCost(data.cost);
+    } catch {
+      setShippingError("Failed to fetch shipping cost.");
+    } finally {
+      setShippingLoading(false);
+    }
+  }
+
   async function handleSaveCategory(categoryId: string) {
     setCategorySaving(true);
     setCategoryMessage(null);
@@ -224,6 +248,24 @@ export default function AdminProductDetailPage() {
       ? Math.round(((currentPriceNum - lowestCost) / currentPriceNum) * 100)
       : null;
 
+  // Pricing calculator: CJ product cost + CJ shipping cost = total cost, then
+  // apply the admin's markup (percent or flat dollar) on top of that total to
+  // arrive at the price actually shown to customers on the site.
+  const totalCost = lowestCost != null && shippingCost != null ? lowestCost + shippingCost : null;
+  const markupNum = Number(markupValue);
+  const hasValidMarkup = markupValue.trim() !== "" && !Number.isNaN(markupNum);
+  const calculatedPrice =
+    totalCost != null && hasValidMarkup
+      ? markupType === "percent"
+        ? totalCost * (1 + markupNum / 100)
+        : totalCost + markupNum
+      : null;
+
+  function handleApplyCalculatedPrice() {
+    if (calculatedPrice == null) return;
+    setPriceInput(calculatedPrice.toFixed(2));
+  }
+
   return (
     <div className="mx-auto max-w-[900px] px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
@@ -267,6 +309,82 @@ export default function AdminProductDetailPage() {
         <CategoryPicker value={product.categoryId} onChange={handleSaveCategory} disabled={categorySaving} />
         <p className="mt-2 text-xs text-text-muted">Changing this re-files the product immediately -- no separate save button needed.</p>
         {categoryMessage && <p className="mt-2 text-sm text-text-secondary">{categoryMessage}</p>}
+      </div>
+
+      <div className="mt-6 rounded-md border border-border p-4">
+        <p className="mb-3 text-xs font-bold uppercase tracking-wide text-text-muted">Pricing Calculator</p>
+
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div>
+            <p className="text-xs text-text-muted">CJ Product Cost</p>
+            <p className="text-base font-semibold text-text-primary">
+              {lowestCost != null ? `$${lowestCost.toFixed(2)}` : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-text-muted">CJ Shipping Cost</p>
+            {shippingCost != null ? (
+              <p className="text-base font-semibold text-text-primary">${shippingCost.toFixed(2)}</p>
+            ) : (
+              <button
+                type="button"
+                onClick={handleFetchShippingCost}
+                disabled={shippingLoading}
+                className="mt-0.5 rounded-md border border-border-strong px-2.5 py-1 text-xs font-semibold text-text-primary hover:border-accent disabled:opacity-60"
+              >
+                {shippingLoading ? "Checking..." : "Get Shipping Cost"}
+              </button>
+            )}
+          </div>
+          <div>
+            <p className="text-xs text-text-muted">Total Cost</p>
+            <p className="text-base font-semibold text-text-primary">{totalCost != null ? `$${totalCost.toFixed(2)}` : "—"}</p>
+          </div>
+          <div>
+            <p className="text-xs text-text-muted">Your Selling Price (shown on website)</p>
+            <p className="text-base font-semibold text-accent-ink">
+              {calculatedPrice != null ? `$${calculatedPrice.toFixed(2)}` : "—"}
+            </p>
+          </div>
+        </div>
+        {shippingError && <p className="mt-2 text-xs text-discount">{shippingError}</p>}
+
+        <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-border pt-4">
+          <div>
+            <label className="mb-1 block text-xs text-text-muted">Increase Total Cost By</label>
+            <div className="flex gap-2">
+              <select
+                value={markupType}
+                onChange={(e) => setMarkupType(e.target.value as "percent" | "dollar")}
+                className="rounded-md border border-border-strong px-2 py-2 text-sm focus:border-accent focus:outline-none"
+              >
+                <option value="percent">% increase</option>
+                <option value="dollar">$ increase</option>
+              </select>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={markupValue}
+                onChange={(e) => setMarkupValue(e.target.value)}
+                placeholder={markupType === "percent" ? "e.g. 30" : "e.g. 10.00"}
+                className="w-32 rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
+              />
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleApplyCalculatedPrice}
+            disabled={calculatedPrice == null}
+            className="rounded-md border border-border-strong px-4 py-2 text-sm font-semibold text-text-primary hover:border-accent disabled:opacity-60"
+          >
+            Apply to Selling Price ↓
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-text-muted">
+          Fetch the shipping cost, choose a percent or dollar increase over Total Cost, then &quot;Apply to Selling
+          Price&quot; fills it into the field below -- still need to click &quot;Save Price&quot; to actually publish it.
+        </p>
       </div>
 
       <div className="mt-6 rounded-md border border-border p-4">
