@@ -23,12 +23,14 @@ export default function AdminPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [needsPriceOnly, setNeedsPriceOnly] = useState(false);
+  const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
 
   async function loadProducts() {
     setLoading(true);
     const res = await fetch("/api/admin/products");
-    const data = await res.json();
+    const data: AdminProductRow[] = await res.json();
     setProducts(data);
+    setPriceInputs(Object.fromEntries(data.map((p) => [p.id, p.overridePrice != null ? String(p.overridePrice) : ""])));
     setLoading(false);
   }
 
@@ -102,6 +104,32 @@ export default function AdminPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ badges: next }),
       });
+      await loadProducts();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleSavePrice(product: AdminProductRow) {
+    const trimmed = (priceInputs[product.id] ?? "").trim();
+    const overridePrice = trimmed === "" ? null : Number(trimmed);
+    if (overridePrice !== null && (Number.isNaN(overridePrice) || overridePrice <= 0)) {
+      setMessage("Enter a valid price greater than 0, or leave it blank to use CJ's suggested price.");
+      return;
+    }
+    setBusyId(product.id);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/admin/products/${product.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ overridePrice }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.error || "Failed to save price.");
+        return;
+      }
       await loadProducts();
     } finally {
       setBusyId(null);
@@ -247,15 +275,34 @@ export default function AdminPage() {
                   ) : (
                     <span className="font-semibold text-discount">Uncategorized</span>
                   )}{" "}
-                  · ${(p.overridePrice ?? p.priceMin)?.toFixed(2) ?? "—"}
-                  {p.overridePrice != null ? (
-                    <span className="text-accent-ink"> (your price)</span>
-                  ) : (
-                    <span className="font-semibold text-discount"> · Needs Final Price</span>
-                  )}{" "}
-                  · pid {p.pid}
+                  · CJ ${p.priceMin?.toFixed(2) ?? "—"} · pid {p.pid}
                 </p>
               </Link>
+              <div className="flex shrink-0 items-center gap-1">
+                <span className="text-xs text-text-muted">$</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={priceInputs[p.id] ?? ""}
+                  onChange={(e) => setPriceInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSavePrice(p);
+                  }}
+                  placeholder={p.priceMin != null ? p.priceMin.toFixed(2) : "0.00"}
+                  className={`w-20 rounded-md border px-2 py-1.5 text-xs focus:border-accent focus:outline-none ${
+                    p.overridePrice == null ? "border-discount" : "border-border-strong"
+                  }`}
+                />
+                <button
+                  type="button"
+                  disabled={busyId === p.id}
+                  onClick={() => handleSavePrice(p)}
+                  className="rounded-md border border-accent bg-accent px-2 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                >
+                  Save
+                </button>
+              </div>
               <span
                 className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
                   p.isActive ? "bg-surface-soft text-accent-ink" : "bg-surface-grey text-text-muted"
