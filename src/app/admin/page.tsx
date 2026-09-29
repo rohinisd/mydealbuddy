@@ -435,32 +435,7 @@ export default function AdminPage() {
                   </span>
                   <span>Total cost: {totalCost != null ? `$${totalCost.toFixed(2)}` : "—"}</span>
                   <span className="flex items-center gap-1">
-                    Sell price: $
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={priceInputs[p.id] ?? ""}
-                      onChange={(e) => setPriceInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleSavePrice(p);
-                      }}
-                      placeholder={p.priceMin != null ? p.priceMin.toFixed(2) : "0.00"}
-                      className={`w-20 rounded-md border px-2 py-1 text-xs focus:border-accent focus:outline-none ${
-                        p.overridePrice == null ? "border-discount" : "border-border-strong"
-                      }`}
-                    />
-                    <button
-                      type="button"
-                      disabled={busyId === p.id}
-                      onClick={() => handleSavePrice(p)}
-                      className="rounded-md border border-accent bg-accent px-2 py-1 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
-                    >
-                      Save
-                    </button>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    or +
+                    +
                     <input
                       type="number"
                       step="1"
@@ -493,6 +468,31 @@ export default function AdminPage() {
                     />
                     over cost
                   </span>
+                  <span className="flex items-center gap-1">
+                    or Sell price: $
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={priceInputs[p.id] ?? ""}
+                      onChange={(e) => setPriceInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSavePrice(p);
+                      }}
+                      placeholder={p.priceMin != null ? p.priceMin.toFixed(2) : "0.00"}
+                      className={`w-20 rounded-md border px-2 py-1 text-xs focus:border-accent focus:outline-none ${
+                        p.overridePrice == null ? "border-discount" : "border-border-strong"
+                      }`}
+                    />
+                  </span>
+                  <button
+                    type="button"
+                    disabled={busyId === p.id}
+                    onClick={() => handleSavePrice(p)}
+                    className="rounded-md border border-accent bg-accent px-2 py-1 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                  >
+                    Save
+                  </button>
                   {dollarIncrease != null && pctIncrease != null && (
                     <span className={`font-semibold ${dollarIncrease < 0 ? "text-discount" : "text-accent-ink"}`}>
                       {dollarIncrease >= 0 ? "+" : ""}
