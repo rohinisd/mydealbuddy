@@ -24,6 +24,8 @@ export default function AdminPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [needsPriceOnly, setNeedsPriceOnly] = useState(false);
   const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
+  const [markupPctInputs, setMarkupPctInputs] = useState<Record<string, string>>({});
+  const [markupDollarInputs, setMarkupDollarInputs] = useState<Record<string, string>>({});
   const [fetchingShippingId, setFetchingShippingId] = useState<string | null>(null);
   const [bulkShippingFetching, setBulkShippingFetching] = useState(false);
   const [bulkShippingProgress, setBulkShippingProgress] = useState<{ done: number; total: number } | null>(null);
@@ -121,6 +123,18 @@ export default function AdminPage() {
     } finally {
       setBusyId(null);
     }
+  }
+
+  function applyMarkupPercent(product: AdminProductRow, totalCost: number | null) {
+    const pct = Number(markupPctInputs[product.id]);
+    if (totalCost == null || !markupPctInputs[product.id]?.trim() || Number.isNaN(pct)) return;
+    setPriceInputs((prev) => ({ ...prev, [product.id]: (totalCost * (1 + pct / 100)).toFixed(2) }));
+  }
+
+  function applyMarkupDollar(product: AdminProductRow, totalCost: number | null) {
+    const amt = Number(markupDollarInputs[product.id]);
+    if (totalCost == null || !markupDollarInputs[product.id]?.trim() || Number.isNaN(amt)) return;
+    setPriceInputs((prev) => ({ ...prev, [product.id]: (totalCost + amt).toFixed(2) }));
   }
 
   async function handleSavePrice(product: AdminProductRow) {
@@ -439,6 +453,56 @@ export default function AdminPage() {
                       className="rounded-md border border-accent bg-accent px-2 py-1 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
                     >
                       Save
+                    </button>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    or +
+                    <input
+                      type="number"
+                      step="1"
+                      value={markupPctInputs[p.id] ?? ""}
+                      onChange={(e) => setMarkupPctInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") applyMarkupPercent(p, totalCost);
+                      }}
+                      disabled={totalCost == null}
+                      placeholder="40"
+                      title={totalCost == null ? "Fetch shipping first to compute this from total cost" : undefined}
+                      className="w-12 rounded-md border border-border-strong px-2 py-1 text-xs focus:border-accent focus:outline-none disabled:opacity-50"
+                    />
+                    % over cost
+                    <button
+                      type="button"
+                      disabled={totalCost == null}
+                      onClick={() => applyMarkupPercent(p, totalCost)}
+                      className="rounded-md border border-border-strong px-2 py-1 text-xs font-semibold text-text-secondary hover:border-accent disabled:opacity-50"
+                    >
+                      Set
+                    </button>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    or +$
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={markupDollarInputs[p.id] ?? ""}
+                      onChange={(e) => setMarkupDollarInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") applyMarkupDollar(p, totalCost);
+                      }}
+                      disabled={totalCost == null}
+                      placeholder="5.00"
+                      title={totalCost == null ? "Fetch shipping first to compute this from total cost" : undefined}
+                      className="w-14 rounded-md border border-border-strong px-2 py-1 text-xs focus:border-accent focus:outline-none disabled:opacity-50"
+                    />
+                    over cost
+                    <button
+                      type="button"
+                      disabled={totalCost == null}
+                      onClick={() => applyMarkupDollar(p, totalCost)}
+                      className="rounded-md border border-border-strong px-2 py-1 text-xs font-semibold text-text-secondary hover:border-accent disabled:opacity-50"
+                    >
+                      Set
                     </button>
                   </span>
                   {dollarIncrease != null && pctIncrease != null && (
