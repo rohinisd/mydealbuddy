@@ -30,11 +30,21 @@ export default function AdminPage() {
 
   async function loadProducts() {
     setLoading(true);
-    const res = await fetch("/api/admin/products");
-    const data: AdminProductRow[] = await res.json();
-    setProducts(data);
-    setPriceInputs(Object.fromEntries(data.map((p) => [p.id, p.overridePrice != null ? String(p.overridePrice) : ""])));
-    setLoading(false);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/admin/products");
+      if (!res.ok) {
+        setMessage(`Failed to load products (${res.status}).`);
+        return;
+      }
+      const data: AdminProductRow[] = await res.json();
+      setProducts(data);
+      setPriceInputs(Object.fromEntries(data.map((p) => [p.id, p.overridePrice != null ? String(p.overridePrice) : ""])));
+    } catch {
+      setMessage("Failed to load products -- network error.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
