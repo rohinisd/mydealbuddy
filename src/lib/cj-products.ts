@@ -15,7 +15,7 @@ function slugify(name: string, pid: string): string {
 }
 
 const NEW_BADGE_WINDOW_DAYS = 14;
-export const BUDDY_COINS_RATE = 0.05; // 5% of price, rounded
+export const BUDDY_COINS_RATE = 1; // 1 coin per $1 spent, rounded (1000 coins = $10 redeemable, see account/buddy-coins)
 
 interface ProductRow {
   id: string;
