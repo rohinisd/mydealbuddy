@@ -24,6 +24,9 @@ export default function AdminPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [needsPriceOnly, setNeedsPriceOnly] = useState(false);
   const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
+  const [fetchingShippingId, setFetchingShippingId] = useState<string | null>(null);
+  const [bulkShippingFetching, setBulkShippingFetching] = useState(false);
+  const [bulkShippingProgress, setBulkShippingProgress] = useState<{ done: number; total: number } | null>(null);
 
   async function loadProducts() {
     setLoading(true);
@@ -136,6 +139,49 @@ export default function AdminPage() {
     }
   }
 
+  async function handleFetchShipping(product: AdminProductRow) {
+    setFetchingShippingId(product.id);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/admin/products/${product.id}/shipping-cost`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.error || "Failed to fetch shipping estimate.");
+        return;
+      }
+      await loadProducts();
+    } finally {
+      setFetchingShippingId(null);
+    }
+  }
+
+  // CJ's freight API is QPS=1 (same constraint as handleBulkAdd above), so
+  // this runs strictly one product at a time from the browser rather than as
+  // a single backend request that would blow past Vercel's function limit.
+  async function handleBulkFetchShipping() {
+    const targets = products.filter((p) => p.cachedShippingCost == null);
+    if (targets.length === 0) return;
+
+    setBulkShippingFetching(true);
+    setMessage(null);
+    setBulkShippingProgress({ done: 0, total: targets.length });
+
+    for (let i = 0; i < targets.length; i++) {
+      setFetchingShippingId(targets[i].id);
+      try {
+        await fetch(`/api/admin/products/${targets[i].id}/shipping-cost`, { method: "POST" });
+      } catch {
+        // A single CJ hiccup shouldn't abort the rest of the batch.
+      }
+      setBulkShippingProgress({ done: i + 1, total: targets.length });
+    }
+
+    setFetchingShippingId(null);
+    setBulkShippingFetching(false);
+    setBulkShippingProgress(null);
+    await loadProducts();
+  }
+
   async function handleLogout() {
     await fetch("/api/admin/logout", { method: "POST" });
     router.push("/admin/login");
@@ -238,15 +284,29 @@ export default function AdminPage() {
 
       {products.length > 0 && (
         <div className="mb-3 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => setNeedsPriceOnly((v) => !v)}
-            className={`rounded-md border px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${
-              needsPriceOnly ? "border-discount bg-discount text-white" : "border-border-strong text-text-primary hover:border-accent"
-            }`}
-          >
-            {needsPriceOnly ? "Showing: Needs Final Price" : `Needs Final Price (${needsPriceCount})`}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setNeedsPriceOnly((v) => !v)}
+              className={`rounded-md border px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${
+                needsPriceOnly ? "border-discount bg-discount text-white" : "border-border-strong text-text-primary hover:border-accent"
+              }`}
+            >
+              {needsPriceOnly ? "Showing: Needs Final Price" : `Needs Final Price (${needsPriceCount})`}
+            </button>
+            {products.some((p) => p.cachedShippingCost == null) && (
+              <button
+                type="button"
+                disabled={bulkShippingFetching}
+                onClick={handleBulkFetchShipping}
+                className="rounded-md border border-border-strong px-3 py-1.5 text-xs font-semibold text-text-primary hover:border-accent disabled:opacity-60"
+              >
+                {bulkShippingFetching && bulkShippingProgress
+                  ? `Fetching shipping… (${bulkShippingProgress.done}/${bulkShippingProgress.total})`
+                  : "Fetch All Shipping Costs"}
+              </button>
+            )}
+          </div>
           {message && <p className="text-sm text-discount">{message}</p>}
         </div>
       )}
@@ -259,92 +319,125 @@ export default function AdminPage() {
         <p className="text-sm text-text-muted">Every product already has a final selling price set.</p>
       ) : (
         <div className="divide-y divide-border rounded-md border border-border">
-          {visibleProducts.map((p) => (
-            <div key={p.id} className="flex items-center gap-3 p-3">
-              <Link href={`/admin/products/${p.id}`} className="h-12 w-12 shrink-0 overflow-hidden rounded border border-border bg-surface-grey">
-                {p.mainImageUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={p.mainImageUrl} alt={p.nameEn} className="h-full w-full object-cover" />
-                )}
-              </Link>
-              <Link href={`/admin/products/${p.id}`} className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-text-primary hover:text-accent">{p.nameEn}</p>
-                <p className="text-xs text-text-muted">
-                  {p.categoryLabel ? (
-                    p.categoryLabel
-                  ) : (
-                    <span className="font-semibold text-discount">Uncategorized</span>
-                  )}{" "}
-                  · CJ ${p.priceMin?.toFixed(2) ?? "—"} · pid {p.pid}
-                </p>
-              </Link>
-              <div className="flex shrink-0 items-center gap-1">
-                <span className="text-xs text-text-muted">$</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={priceInputs[p.id] ?? ""}
-                  onChange={(e) => setPriceInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSavePrice(p);
-                  }}
-                  placeholder={p.priceMin != null ? p.priceMin.toFixed(2) : "0.00"}
-                  className={`w-20 rounded-md border px-2 py-1.5 text-xs focus:border-accent focus:outline-none ${
-                    p.overridePrice == null ? "border-discount" : "border-border-strong"
-                  }`}
-                />
-                <button
-                  type="button"
-                  disabled={busyId === p.id}
-                  onClick={() => handleSavePrice(p)}
-                  className="rounded-md border border-accent bg-accent px-2 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
-                >
-                  Save
-                </button>
-              </div>
-              <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                  p.isActive ? "bg-surface-soft text-accent-ink" : "bg-surface-grey text-text-muted"
-                }`}
-              >
-                {p.isActive ? "Active" : "Inactive"}
-              </span>
-              <div className="flex shrink-0 gap-1.5">
-                {(["deal", "sale"] as const).map((badge) => (
-                  <button
-                    key={badge}
-                    type="button"
-                    disabled={busyId === p.id}
-                    onClick={() => toggleBadge(p, badge)}
-                    className={`rounded-md border px-2 py-1.5 text-xs font-semibold capitalize disabled:opacity-60 ${
-                      p.badges.includes(badge)
-                        ? "border-accent bg-accent text-white"
-                        : "border-border-strong text-text-primary hover:border-accent"
+          {visibleProducts.map((p) => {
+            const totalCost = p.costPrice != null && p.cachedShippingCost != null ? p.costPrice + p.cachedShippingCost : null;
+            const enteredPrice = Number(priceInputs[p.id]);
+            const effectivePrice = priceInputs[p.id]?.trim() && !Number.isNaN(enteredPrice) ? enteredPrice : p.priceMin;
+            const dollarIncrease = totalCost != null && effectivePrice != null ? effectivePrice - totalCost : null;
+            const pctIncrease = dollarIncrease != null && totalCost ? (dollarIncrease / totalCost) * 100 : null;
+
+            return (
+              <div key={p.id} className="p-3">
+                <div className="flex items-center gap-3">
+                  <Link href={`/admin/products/${p.id}`} className="h-12 w-12 shrink-0 overflow-hidden rounded border border-border bg-surface-grey">
+                    {p.mainImageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.mainImageUrl} alt={p.nameEn} className="h-full w-full object-cover" />
+                    )}
+                  </Link>
+                  <Link href={`/admin/products/${p.id}`} className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-text-primary hover:text-accent">{p.nameEn}</p>
+                    <p className="text-xs text-text-muted">
+                      {p.categoryLabel ? (
+                        p.categoryLabel
+                      ) : (
+                        <span className="font-semibold text-discount">Uncategorized</span>
+                      )}{" "}
+                      · CJ suggested ${p.priceMin?.toFixed(2) ?? "—"} · pid {p.pid}
+                    </p>
+                  </Link>
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      p.isActive ? "bg-surface-soft text-accent-ink" : "bg-surface-grey text-text-muted"
                     }`}
                   >
-                    {badge}
+                    {p.isActive ? "Active" : "Inactive"}
+                  </span>
+                  <div className="flex shrink-0 gap-1.5">
+                    {(["deal", "sale"] as const).map((badge) => (
+                      <button
+                        key={badge}
+                        type="button"
+                        disabled={busyId === p.id}
+                        onClick={() => toggleBadge(p, badge)}
+                        className={`rounded-md border px-2 py-1.5 text-xs font-semibold capitalize disabled:opacity-60 ${
+                          p.badges.includes(badge)
+                            ? "border-accent bg-accent text-white"
+                            : "border-border-strong text-text-primary hover:border-accent"
+                        }`}
+                      >
+                        {badge}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={busyId === p.id}
+                    onClick={() => toggleActive(p)}
+                    className="shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-xs font-semibold text-text-primary hover:border-accent disabled:opacity-60"
+                  >
+                    {p.isActive ? "Deactivate" : "Activate"}
                   </button>
-                ))}
+                  <button
+                    type="button"
+                    disabled={busyId === p.id}
+                    onClick={() => handleDelete(p)}
+                    className="shrink-0 rounded-md border border-discount px-3 py-1.5 text-xs font-semibold text-discount hover:bg-discount/10 disabled:opacity-60"
+                  >
+                    Delete
+                  </button>
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 pl-[60px] text-xs text-text-muted">
+                  <span>CJ cost: {p.costPrice != null ? `$${p.costPrice.toFixed(2)}` : "—"}</span>
+                  <span className="flex items-center gap-1">
+                    Shipping (NJ): {p.cachedShippingCost != null ? `$${p.cachedShippingCost.toFixed(2)}` : <span className="italic">not fetched</span>}
+                    <button
+                      type="button"
+                      disabled={fetchingShippingId === p.id || bulkShippingFetching}
+                      onClick={() => handleFetchShipping(p)}
+                      className="rounded border border-border-strong px-1.5 py-0.5 text-[10px] font-semibold text-text-secondary hover:border-accent disabled:opacity-60"
+                    >
+                      {fetchingShippingId === p.id ? "Fetching…" : p.cachedShippingCost != null ? "Refresh" : "Fetch"}
+                    </button>
+                  </span>
+                  <span>Total cost: {totalCost != null ? `$${totalCost.toFixed(2)}` : "—"}</span>
+                  <span className="flex items-center gap-1">
+                    Sell price: $
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={priceInputs[p.id] ?? ""}
+                      onChange={(e) => setPriceInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSavePrice(p);
+                      }}
+                      placeholder={p.priceMin != null ? p.priceMin.toFixed(2) : "0.00"}
+                      className={`w-20 rounded-md border px-2 py-1 text-xs focus:border-accent focus:outline-none ${
+                        p.overridePrice == null ? "border-discount" : "border-border-strong"
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      disabled={busyId === p.id}
+                      onClick={() => handleSavePrice(p)}
+                      className="rounded-md border border-accent bg-accent px-2 py-1 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                    >
+                      Save
+                    </button>
+                  </span>
+                  {dollarIncrease != null && pctIncrease != null && (
+                    <span className={`font-semibold ${dollarIncrease < 0 ? "text-discount" : "text-accent-ink"}`}>
+                      {dollarIncrease >= 0 ? "+" : ""}
+                      ${dollarIncrease.toFixed(2)} ({pctIncrease >= 0 ? "+" : ""}
+                      {pctIncrease.toFixed(0)}%)
+                    </span>
+                  )}
+                </div>
               </div>
-              <button
-                type="button"
-                disabled={busyId === p.id}
-                onClick={() => toggleActive(p)}
-                className="shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-xs font-semibold text-text-primary hover:border-accent disabled:opacity-60"
-              >
-                {p.isActive ? "Deactivate" : "Activate"}
-              </button>
-              <button
-                type="button"
-                disabled={busyId === p.id}
-                onClick={() => handleDelete(p)}
-                className="shrink-0 rounded-md border border-discount px-3 py-1.5 text-xs font-semibold text-discount hover:bg-discount/10 disabled:opacity-60"
-              >
-                Delete
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

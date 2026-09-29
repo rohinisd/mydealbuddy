@@ -10,6 +10,9 @@ export interface AdminProductRow {
   brand: string | null;
   priceMin: number | null;
   overridePrice: number | null;
+  costPrice: number | null;
+  cachedShippingCost: number | null;
+  cachedShippingFetchedAt: string | null;
   mainImageUrl: string | null;
   isActive: boolean;
   badges: string[];
@@ -21,12 +24,19 @@ const CATEGORY_JOIN = `LEFT JOIN app_category ac ON ac.id = p.app_category_id`;
 // different top categories (e.g. "Accessories" appears several times) aren't
 // ambiguous in the admin list.
 const CATEGORY_LABEL_EXPR = `NULLIF(concat_ws(' / ', ac.l1_name, ac.l2_name, ac.l3_name), '')`;
+// Cheapest variant's CJ cost -- same "cost" basis as the per-product margin
+// calc on the product detail page.
+const COST_PRICE_JOIN = `LEFT JOIN LATERAL (
+  SELECT MIN(v.cost_price) AS cost_price FROM cj_variant v WHERE v.product_id = p.id
+) cost ON true`;
 
 export async function listAllProductsForAdmin(): Promise<AdminProductRow[]> {
   const res = await pool.query(
     `SELECT p.id, p.pid, p.name_en, p.app_category_id, ${CATEGORY_LABEL_EXPR} AS category_label,
-            p.brand, p.price_min, p.override_price, p.main_image_url, p.is_active, p.badges, p.fetched_at
-     FROM cj_product p ${CATEGORY_JOIN}
+            p.brand, p.price_min, p.override_price, cost.cost_price,
+            p.cached_shipping_cost, p.cached_shipping_fetched_at,
+            p.main_image_url, p.is_active, p.badges, p.fetched_at
+     FROM cj_product p ${CATEGORY_JOIN} ${COST_PRICE_JOIN}
      ORDER BY p.fetched_at DESC`
   );
   return res.rows.map((row) => ({
@@ -38,11 +48,21 @@ export async function listAllProductsForAdmin(): Promise<AdminProductRow[]> {
     brand: row.brand,
     priceMin: row.price_min ? Number(row.price_min) : null,
     overridePrice: row.override_price ? Number(row.override_price) : null,
+    costPrice: row.cost_price ? Number(row.cost_price) : null,
+    cachedShippingCost: row.cached_shipping_cost ? Number(row.cached_shipping_cost) : null,
+    cachedShippingFetchedAt: row.cached_shipping_fetched_at,
     mainImageUrl: row.main_image_url,
     isActive: row.is_active,
     badges: row.badges ?? [],
     fetchedAt: row.fetched_at,
   }));
+}
+
+export async function setProductCachedShippingCost(id: string, cost: number): Promise<void> {
+  await pool.query(`UPDATE cj_product SET cached_shipping_cost = $1, cached_shipping_fetched_at = now() WHERE id = $2`, [
+    cost,
+    id,
+  ]);
 }
 
 export interface AdminProductVariantRow {
