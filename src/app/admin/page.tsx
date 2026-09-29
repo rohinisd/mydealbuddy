@@ -125,16 +125,20 @@ export default function AdminPage() {
     }
   }
 
-  function applyMarkupPercent(product: AdminProductRow, totalCost: number | null) {
-    const pct = Number(markupPctInputs[product.id]);
-    if (totalCost == null || !markupPctInputs[product.id]?.trim() || Number.isNaN(pct)) return;
-    setPriceInputs((prev) => ({ ...prev, [product.id]: (totalCost * (1 + pct / 100)).toFixed(2) }));
+  function handleMarkupPctChange(product: AdminProductRow, totalCost: number | null, value: string) {
+    setMarkupPctInputs((prev) => ({ ...prev, [product.id]: value }));
+    const pct = Number(value);
+    if (totalCost != null && value.trim() !== "" && !Number.isNaN(pct)) {
+      setPriceInputs((prev) => ({ ...prev, [product.id]: (totalCost * (1 + pct / 100)).toFixed(2) }));
+    }
   }
 
-  function applyMarkupDollar(product: AdminProductRow, totalCost: number | null) {
-    const amt = Number(markupDollarInputs[product.id]);
-    if (totalCost == null || !markupDollarInputs[product.id]?.trim() || Number.isNaN(amt)) return;
-    setPriceInputs((prev) => ({ ...prev, [product.id]: (totalCost + amt).toFixed(2) }));
+  function handleMarkupDollarChange(product: AdminProductRow, totalCost: number | null, value: string) {
+    setMarkupDollarInputs((prev) => ({ ...prev, [product.id]: value }));
+    const amt = Number(value);
+    if (totalCost != null && value.trim() !== "" && !Number.isNaN(amt)) {
+      setPriceInputs((prev) => ({ ...prev, [product.id]: (totalCost + amt).toFixed(2) }));
+    }
   }
 
   async function handleSavePrice(product: AdminProductRow) {
@@ -461,9 +465,9 @@ export default function AdminPage() {
                       type="number"
                       step="1"
                       value={markupPctInputs[p.id] ?? ""}
-                      onChange={(e) => setMarkupPctInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                      onChange={(e) => handleMarkupPctChange(p, totalCost, e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") applyMarkupPercent(p, totalCost);
+                        if (e.key === "Enter") handleSavePrice(p);
                       }}
                       disabled={totalCost == null}
                       placeholder="40"
@@ -471,14 +475,6 @@ export default function AdminPage() {
                       className="w-12 rounded-md border border-border-strong px-2 py-1 text-xs focus:border-accent focus:outline-none disabled:opacity-50"
                     />
                     % over cost
-                    <button
-                      type="button"
-                      disabled={totalCost == null}
-                      onClick={() => applyMarkupPercent(p, totalCost)}
-                      className="rounded-md border border-border-strong px-2 py-1 text-xs font-semibold text-text-secondary hover:border-accent disabled:opacity-50"
-                    >
-                      Set
-                    </button>
                   </span>
                   <span className="flex items-center gap-1">
                     or +$
@@ -486,9 +482,9 @@ export default function AdminPage() {
                       type="number"
                       step="0.01"
                       value={markupDollarInputs[p.id] ?? ""}
-                      onChange={(e) => setMarkupDollarInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                      onChange={(e) => handleMarkupDollarChange(p, totalCost, e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") applyMarkupDollar(p, totalCost);
+                        if (e.key === "Enter") handleSavePrice(p);
                       }}
                       disabled={totalCost == null}
                       placeholder="5.00"
@@ -496,14 +492,6 @@ export default function AdminPage() {
                       className="w-14 rounded-md border border-border-strong px-2 py-1 text-xs focus:border-accent focus:outline-none disabled:opacity-50"
                     />
                     over cost
-                    <button
-                      type="button"
-                      disabled={totalCost == null}
-                      onClick={() => applyMarkupDollar(p, totalCost)}
-                      className="rounded-md border border-border-strong px-2 py-1 text-xs font-semibold text-text-secondary hover:border-accent disabled:opacity-50"
-                    >
-                      Set
-                    </button>
                   </span>
                   {dollarIncrease != null && pctIncrease != null && (
                     <span className={`font-semibold ${dollarIncrease < 0 ? "text-discount" : "text-accent-ink"}`}>
