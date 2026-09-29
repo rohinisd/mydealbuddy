@@ -292,31 +292,35 @@ export default function AdminPage() {
         )}
       </form>
 
-      {products.length > 0 && (
+      {(products.length > 0 || message) && (
         <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setNeedsPriceOnly((v) => !v)}
-              className={`rounded-md border px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${
-                needsPriceOnly ? "border-discount bg-discount text-white" : "border-border-strong text-text-primary hover:border-accent"
-              }`}
-            >
-              {needsPriceOnly ? "Showing: Needs Final Price" : `Needs Final Price (${needsPriceCount})`}
-            </button>
-            {products.some((p) => p.cachedShippingCost == null) && (
+          {products.length > 0 ? (
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                disabled={bulkShippingFetching}
-                onClick={handleBulkFetchShipping}
-                className="rounded-md border border-border-strong px-3 py-1.5 text-xs font-semibold text-text-primary hover:border-accent disabled:opacity-60"
+                onClick={() => setNeedsPriceOnly((v) => !v)}
+                className={`rounded-md border px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${
+                  needsPriceOnly ? "border-discount bg-discount text-white" : "border-border-strong text-text-primary hover:border-accent"
+                }`}
               >
-                {bulkShippingFetching && bulkShippingProgress
-                  ? `Fetching shipping… (${bulkShippingProgress.done}/${bulkShippingProgress.total})`
-                  : "Fetch All Shipping Costs"}
+                {needsPriceOnly ? "Showing: Needs Final Price" : `Needs Final Price (${needsPriceCount})`}
               </button>
-            )}
-          </div>
+              {products.some((p) => p.cachedShippingCost == null) && (
+                <button
+                  type="button"
+                  disabled={bulkShippingFetching}
+                  onClick={handleBulkFetchShipping}
+                  className="rounded-md border border-border-strong px-3 py-1.5 text-xs font-semibold text-text-primary hover:border-accent disabled:opacity-60"
+                >
+                  {bulkShippingFetching && bulkShippingProgress
+                    ? `Fetching shipping… (${bulkShippingProgress.done}/${bulkShippingProgress.total})`
+                    : "Fetch All Shipping Costs"}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div />
+          )}
           {message && <p className="text-sm text-discount">{message}</p>}
         </div>
       )}
