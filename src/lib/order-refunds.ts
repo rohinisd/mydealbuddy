@@ -45,6 +45,21 @@ async function markRefundedAndClawback(
     );
   }
 
+  // Symmetric with the clawback above: coins the customer spent on this
+  // order are handed back, since a refund undoes the purchase they were
+  // discounting.
+  const redeemedRes = await client.query(
+    `SELECT customer_id, SUM(amount) AS total FROM buddy_coin_ledger
+     WHERE order_id = $1 AND reason = 'redemption' GROUP BY customer_id`,
+    [orderId]
+  );
+  for (const row of redeemedRes.rows) {
+    await client.query(
+      `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1, $2, 'redemption_refund', $3)`,
+      [row.customer_id, -Number(row.total), orderId]
+    );
+  }
+
   return res.rows[0];
 }
 

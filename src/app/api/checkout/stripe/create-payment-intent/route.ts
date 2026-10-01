@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
       customerId: customer?.id ?? null,
       lines: parsed.lines,
       couponCode: parsed.couponCode,
+      coinsToRedeem: parsed.coinsToRedeem,
       shipping: parsed.shipping,
     });
     return NextResponse.json({ ok: true, clientSecret, paymentIntentId, total });

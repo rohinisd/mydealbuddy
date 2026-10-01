@@ -58,7 +58,10 @@ export default async function OrdersPage() {
               </ul>
 
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-sm">
-                <span className="text-text-muted">Earned {order.buddyCoinsEarned} Buddy Coins</span>
+                <span className="text-text-muted">
+                  {order.coinsRedeemed > 0 && `Redeemed ${order.coinsRedeemed} Buddy Coins · `}
+                  Earned {order.buddyCoinsEarned} Buddy Coins
+                </span>
                 <span className="font-bold text-text-primary">Total ${order.total.toFixed(2)}</span>
               </div>
             </div>

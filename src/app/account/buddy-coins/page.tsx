@@ -5,6 +5,7 @@ import { AccountLayout } from "@/components/account/AccountLayout";
 import { CoinIcon } from "@/components/icons/Icons";
 import { getCurrentCustomer } from "@/lib/current-customer";
 import { getBuddyCoinLedger, type BuddyCoinLedgerRow } from "@/lib/orders";
+import { COIN_REDEMPTION_RATE } from "@/lib/buddy-coins";
 
 export const metadata = { title: "Buddy Coins | MyDealBuddy" };
 
@@ -12,6 +13,9 @@ const REASON_LABEL: Record<BuddyCoinLedgerRow["reason"], string> = {
   purchase: "Earned on order",
   referral_bonus: "Referral bonus",
   referred_signup_bonus: "Welcome bonus (referred)",
+  redemption: "Redeemed on order",
+  redemption_refund: "Redemption refunded",
+  refund_clawback: "Refund clawback",
 };
 
 function describeRow(row: BuddyCoinLedgerRow): string {
@@ -33,7 +37,7 @@ export default async function BuddyCoinsPage() {
         <CoinIcon className="h-8 w-8 text-accent" />
         <div>
           <p className="text-2xl font-bold text-text-primary">{balance} Coins</p>
-          <p className="text-xs text-text-muted">≈ ${(balance * 0.01).toFixed(2)} in redeemable value</p>
+          <p className="text-xs text-text-muted">≈ ${(balance * COIN_REDEMPTION_RATE).toFixed(2)} in redeemable value</p>
         </div>
       </div>
 

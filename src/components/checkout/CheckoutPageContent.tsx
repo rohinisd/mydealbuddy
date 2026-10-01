@@ -11,6 +11,7 @@ import { useCoupon } from "@/context/CouponContext";
 import { useProductsByIds } from "@/hooks/useProductsByIds";
 import { SHIPPING_COUNTRIES } from "@/data/countries";
 import { isValidPostalCode } from "@/lib/postal-codes";
+import { COIN_REDEMPTION_RATE } from "@/lib/buddy-coins";
 import type { Order } from "@/lib/orders";
 import type { CustomerAddress } from "@/lib/customer-addresses";
 
@@ -138,6 +139,8 @@ export function CheckoutPageContent({
   const [shippingError, setShippingError] = useState<string | null>(null);
   const [taxAmount, setTaxAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<"paypal" | "card">("paypal");
+  const [coinBalance, setCoinBalance] = useState(0);
+  const [coinsToRedeemInput, setCoinsToRedeemInput] = useState("");
 
   useEffect(() => {
     if (isGuest) return;
@@ -148,6 +151,10 @@ export function CheckoutPageContent({
         const def = data.find((a) => a.isDefault);
         if (def) applyAddress(def);
       })
+      .catch(() => {});
+    fetch("/api/account/buddy-coins")
+      .then((r) => r.json())
+      .then((data: { balance: number }) => setCoinBalance(data.balance ?? 0))
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time load on mount
   }, [isGuest]);
@@ -235,7 +242,11 @@ export function CheckoutPageContent({
     .filter((r): r is { line: typeof lines[number]; product: NonNullable<typeof r.product> } => !!r.product);
   const subtotal = resolved.reduce((sum, r) => sum + r.product.price * r.line.quantity, 0);
   const couponDiscount = applied?.discountAmount ?? 0;
-  const total = Math.max(0, subtotal - couponDiscount) + (shippingCost ?? 0) + taxAmount;
+  const maxRedeemableValue = Math.max(0, subtotal - couponDiscount);
+  const maxRedeemableCoins = Math.min(coinBalance, Math.floor(maxRedeemableValue / COIN_REDEMPTION_RATE));
+  const coinsToRedeem = Math.max(0, Math.min(Math.floor(Number(coinsToRedeemInput) || 0), maxRedeemableCoins));
+  const coinDiscount = coinsToRedeem * COIN_REDEMPTION_RATE;
+  const total = Math.max(0, subtotal - couponDiscount - coinDiscount) + (shippingCost ?? 0) + taxAmount;
   const readyForPayment = !shippingCalculating && shippingCost !== null && !shippingError;
 
   function currentShippingPayload() {
@@ -243,6 +254,7 @@ export function CheckoutPageContent({
     return {
       lines: lines.map((l) => ({ productId: l.productId, quantity: l.quantity, option: l.option })),
       couponCode: applied?.code ?? null,
+      coinsToRedeem,
       shipping: { name, email, countryCode, country, province, city, address, zip, phone },
     };
   }
@@ -280,6 +292,7 @@ export function CheckoutPageContent({
     setPlacedOrder(data.order);
     clear();
     clearCoupon();
+    setCoinsToRedeemInput("");
 
     if (!isGuest && saveAddress) {
       const { shipping } = currentShippingPayload();
@@ -319,6 +332,7 @@ export function CheckoutPageContent({
     setPlacedOrder(data.order);
     clear();
     clearCoupon();
+    setCoinsToRedeemInput("");
 
     if (!isGuest && saveAddress) {
       const { shipping } = currentShippingPayload();
@@ -373,6 +387,7 @@ export function CheckoutPageContent({
           <p className="text-lg font-bold text-text-primary">Order placed — {placedOrder.orderNumber}</p>
           <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
             Paid ${placedOrder.total.toFixed(2)} via {placedOrder.paymentMethod === "stripe" ? "card" : "PayPal"}.{" "}
+            {placedOrder.coinsRedeemed > 0 && `You redeemed ${placedOrder.coinsRedeemed} Buddy Coins ($${(placedOrder.coinsRedeemed * COIN_REDEMPTION_RATE).toFixed(2)} off). `}
             {placedOrder.buddyCoinsEarned > 0
               ? `You earned ${placedOrder.buddyCoinsEarned} Buddy Coins on this order.`
               : "Create an account next time to earn Buddy Coins on your orders."}
@@ -619,6 +634,42 @@ export function CheckoutPageContent({
               <div className="mt-2 flex justify-between text-sm text-price-note">
                 <span>Coupon ({applied?.code})</span>
                 <span>− ${couponDiscount.toFixed(2)}</span>
+              </div>
+            )}
+
+            {!isGuest && coinBalance > 0 && (
+              <div className="mt-3 border-t border-border pt-3">
+                <div className="flex items-center justify-between text-xs text-text-muted">
+                  <span>
+                    Buddy Coins: {coinBalance} (≈ ${(coinBalance * COIN_REDEMPTION_RATE).toFixed(2)})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCoinsToRedeemInput(String(maxRedeemableCoins))}
+                    className="font-semibold text-accent hover:underline"
+                  >
+                    Use max
+                  </button>
+                </div>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max={maxRedeemableCoins}
+                    step="1"
+                    value={coinsToRedeemInput}
+                    onChange={(e) => setCoinsToRedeemInput(e.target.value)}
+                    placeholder="0"
+                    className="w-24 rounded-md border border-border-strong px-2 py-1.5 text-sm focus:border-accent focus:outline-none"
+                  />
+                  <span className="text-xs text-text-muted">coins to redeem</span>
+                </div>
+              </div>
+            )}
+            {coinDiscount > 0 && (
+              <div className="mt-2 flex justify-between text-sm text-price-note">
+                <span>Buddy Coins ({coinsToRedeem})</span>
+                <span>− ${coinDiscount.toFixed(2)}</span>
               </div>
             )}
             {shippingCost !== null && (

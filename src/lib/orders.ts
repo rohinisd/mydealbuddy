@@ -3,6 +3,7 @@ import { pool } from "@/lib/db";
 import { getProductsByIds } from "@/lib/products";
 import { validateCoupon, incrementCouponUsage } from "@/lib/coupons";
 import { BUDDY_COINS_RATE } from "@/lib/cj-products";
+import { COIN_REDEMPTION_RATE } from "@/lib/buddy-coins";
 import { findCustomerById } from "@/lib/customers";
 import { getCartShippingEstimate } from "@/lib/cart-shipping";
 import { calculateTax } from "@/lib/tax";
@@ -28,6 +29,7 @@ export interface Order {
   taxAmount: number;
   total: number;
   buddyCoinsEarned: number;
+  coinsRedeemed: number;
   couponCode: string | null;
   shippingEmail: string;
   paymentMethod: "paypal" | "stripe";
@@ -52,6 +54,7 @@ export function rowToOrder(row: Record<string, unknown>, lines: OrderLine[]): Or
     taxAmount: Number(row.tax_amount ?? 0),
     total: Number(row.total),
     buddyCoinsEarned: Number(row.buddy_coins_earned),
+    coinsRedeemed: Number(row.coins_redeemed ?? 0),
     couponCode: (row.coupon_code as string | null) ?? null,
     shippingEmail: row.shipping_email as string,
     paymentMethod: (row.payment_method as Order["paymentMethod"]) ?? "paypal",
@@ -88,6 +91,7 @@ interface ResolvedOrder {
   taxAmount: number;
   total: number;
   buddyCoinsEarned: number;
+  coinsRedeemed: number;
   shipping: ShippingInput;
   status: "pending_payment" | "paid";
   paymentMethod: "paypal" | "stripe";
@@ -109,10 +113,10 @@ async function insertOrderRecord(resolved: ResolvedOrder): Promise<Order> {
     const orderRes = await client.query(
       `INSERT INTO customer_order
          (customer_id, order_number, status, subtotal, discount_amount, shipping_amount, tax_amount, total, buddy_coins_earned,
-          coupon_code, shipping_name, shipping_email, shipping_country_code, shipping_country, shipping_province,
+          coins_redeemed, coupon_code, shipping_name, shipping_email, shipping_country_code, shipping_country, shipping_province,
           shipping_city, shipping_address, shipping_zip, shipping_phone, payment_method, paypal_order_id, paypal_capture_id,
           stripe_payment_intent_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
        RETURNING *`,
       [
         resolved.customerId,
@@ -124,6 +128,7 @@ async function insertOrderRecord(resolved: ResolvedOrder): Promise<Order> {
         resolved.taxAmount,
         resolved.total,
         resolved.buddyCoinsEarned,
+        resolved.coinsRedeemed,
         resolved.couponCode,
         resolved.shipping.name,
         resolved.shipping.email,
@@ -154,6 +159,29 @@ async function insertOrderRecord(resolved: ResolvedOrder): Promise<Order> {
       await client.query(
         `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1,$2,'purchase',$3)`,
         [resolved.customerId, resolved.buddyCoinsEarned, orderRow.id]
+      );
+    }
+
+    // Re-checked here (not just back in resolveOrder) because this is the
+    // moment the spend is actually committed -- resolveOrder's check ran
+    // possibly minutes earlier (PayPal/Stripe create-order time), and two
+    // concurrent checkouts could otherwise both pass that earlier check and
+    // double-spend the same coins. Throwing here rolls back the whole order
+    // via the catch block below.
+    if (resolved.coinsRedeemed > 0 && resolved.customerId) {
+      const balRes = await client.query(
+        `SELECT COALESCE(SUM(amount), 0) AS balance FROM buddy_coin_ledger WHERE customer_id = $1`,
+        [resolved.customerId]
+      );
+      const balance = Number(balRes.rows[0].balance);
+      if (balance < resolved.coinsRedeemed) {
+        throw new PlaceOrderError(
+          `You only have ${balance} Buddy Coins available -- your redemption could not be completed. Please try again.`
+        );
+      }
+      await client.query(
+        `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1,$2,'redemption',$3)`,
+        [resolved.customerId, -resolved.coinsRedeemed, orderRow.id]
       );
     }
 
@@ -198,6 +226,7 @@ export interface ResolveOrderInput {
   customerId: string | null;
   lines: { productId: string; quantity: number; option?: string }[];
   couponCode?: string | null;
+  coinsToRedeem?: number;
   shipping: ShippingInput;
 }
 
@@ -233,6 +262,29 @@ async function resolveOrder(
     couponCode = result.coupon?.code ?? input.couponCode;
   }
 
+  let coinsRedeemed = 0;
+  let coinDiscountAmount = 0;
+  if (input.coinsToRedeem) {
+    if (!Number.isInteger(input.coinsToRedeem) || input.coinsToRedeem < 0) {
+      throw new PlaceOrderError("Buddy Coins to redeem must be a whole, non-negative number.");
+    }
+    if (input.coinsToRedeem > 0) {
+      if (!input.customerId) throw new PlaceOrderError("Sign in to redeem Buddy Coins.");
+      const { balance } = await getBuddyCoinLedger(input.customerId);
+      if (input.coinsToRedeem > balance) {
+        throw new PlaceOrderError(`You only have ${balance} Buddy Coins available.`);
+      }
+      const maxRedeemableValue = Math.max(0, subtotal - discountAmount);
+      const requestedValue = input.coinsToRedeem * COIN_REDEMPTION_RATE;
+      if (requestedValue > maxRedeemableValue) {
+        const maxCoins = Math.floor(maxRedeemableValue / COIN_REDEMPTION_RATE);
+        throw new PlaceOrderError(`That's more Buddy Coins than this order needs -- the most you can redeem here is ${maxCoins}.`);
+      }
+      coinsRedeemed = input.coinsToRedeem;
+      coinDiscountAmount = requestedValue;
+    }
+  }
+
   if (!input.shipping.zip?.trim()) {
     throw new PlaceOrderError("A ZIP/postal code is required to calculate shipping.");
   }
@@ -245,7 +297,7 @@ async function resolveOrder(
     throw new PlaceOrderError("One or more items in your cart can't be shipped to that address.");
   }
   const shippingAmount = shippingResult.total;
-  const taxableAmount = Math.max(0, subtotal - discountAmount);
+  const taxableAmount = Math.max(0, subtotal - discountAmount - coinDiscountAmount);
   const taxAmount = calculateTax(taxableAmount, input.shipping.countryCode, input.shipping.province);
   const total = taxableAmount + shippingAmount + taxAmount;
   // Guests have no account to credit Buddy Coins to -- 0, not a phantom
@@ -259,6 +311,7 @@ async function resolveOrder(
     resolvedLines,
     subtotal,
     discountAmount,
+    coinsRedeemed,
     couponCode,
     shippingAmount,
     taxAmount,
@@ -390,7 +443,7 @@ export async function getOrderById(orderId: string): Promise<Order | null> {
 export interface BuddyCoinLedgerRow {
   id: string;
   amount: number;
-  reason: "purchase" | "referral_bonus" | "referred_signup_bonus";
+  reason: "purchase" | "referral_bonus" | "referred_signup_bonus" | "refund_clawback" | "redemption" | "redemption_refund";
   orderNumber: string | null;
   createdAt: string;
 }

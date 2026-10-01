@@ -1,7 +1,13 @@
 import type { ResolveOrderInput } from "@/lib/orders";
 
 export type ParsedCheckoutBody =
-  | { ok: true; lines: ResolveOrderInput["lines"]; shipping: ResolveOrderInput["shipping"]; couponCode: string | null }
+  | {
+      ok: true;
+      lines: ResolveOrderInput["lines"];
+      shipping: ResolveOrderInput["shipping"];
+      couponCode: string | null;
+      coinsToRedeem: number;
+    }
   | { ok: false; error: string };
 
 const REQUIRED_SHIPPING_FIELDS = ["name", "email", "countryCode", "country", "city", "address"] as const;
@@ -27,10 +33,14 @@ export function parseCheckoutBody(body: unknown): ParsedCheckoutBody {
     }
   }
 
+  const rawCoinsToRedeem = Number(b?.coinsToRedeem);
+  const coinsToRedeem = Number.isInteger(rawCoinsToRedeem) && rawCoinsToRedeem > 0 ? rawCoinsToRedeem : 0;
+
   return {
     ok: true,
     lines: validLines,
     couponCode: typeof b?.couponCode === "string" ? b.couponCode : null,
+    coinsToRedeem,
     shipping: {
       name: shipping.name as string,
       email: shipping.email as string,
