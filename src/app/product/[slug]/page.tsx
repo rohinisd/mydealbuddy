@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { ProductDetail } from "@/components/pdp/ProductDetail";
-import { getProductBySlug, getProductDescription, getProductReviews, getRelatedProducts } from "@/lib/products";
+import { getProductBySlug, getProductDescription, getProductSpecifications, getProductReviews, getRelatedProducts } from "@/lib/products";
 import { getVideoForProduct } from "@/lib/product-videos";
 
 // No generateStaticParams: the CJ-synced catalog changes with each sync run,
@@ -13,9 +13,10 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const product = await getProductBySlug(slug);
   if (!product) notFound();
 
-  const [related, description, reviews, video] = await Promise.all([
+  const [related, description, specifications, reviews, video] = await Promise.all([
     getRelatedProducts(product),
     getProductDescription(product.id),
+    getProductSpecifications(product.id),
     getProductReviews(product.id),
     getVideoForProduct(product.id),
   ]);
@@ -24,7 +25,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     <>
       <Header />
       <main className="flex-1">
-        <ProductDetail product={{ ...product, description }} related={related} reviews={reviews} video={video} />
+        <ProductDetail product={{ ...product, description }} specifications={specifications} related={related} reviews={reviews} video={video} />
       </main>
       <Footer />
     </>

@@ -7,5 +7,6 @@ export {
   getRelatedProducts,
   searchProducts,
   getProductDescription,
+  getProductSpecifications,
   getProductReviews,
 } from "@/lib/cj-products";

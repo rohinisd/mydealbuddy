@@ -190,6 +190,55 @@ export async function getProductDescription(productId: string): Promise<string |
   return res.rows[0]?.description_html ?? undefined;
 }
 
+export interface ProductSpecifications {
+  material: string | null;
+  packaging: string | null;
+  weightG: { min: number; max: number } | null;
+  brand: string | null;
+}
+
+// CJ returns these "...Set" fields as JSON-encoded strings (e.g. the literal
+// text '["Others"]'), not real JSON arrays -- same quirk cj-sync.ts already
+// parses for productName via parseJsonArrayField.
+function firstOfArrayField(raw: unknown): string | null {
+  let value: unknown = raw;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    try {
+      value = JSON.parse(trimmed);
+    } catch {
+      return trimmed || null;
+    }
+  }
+  if (Array.isArray(value)) return value.filter(Boolean).join(", ") || null;
+  return null;
+}
+
+// Same "fetch separately, don't bloat BASE_QUERY" reasoning as the description
+// above -- raw_payload is the single biggest column on this table. Material/
+// packaging were never broken out into their own columns (cj_attribute_term
+// exists in the schema but was never wired into cj-sync.ts), so this reads
+// them straight out of CJ's raw payload rather than leaving them unsurfaced.
+export async function getProductSpecifications(productId: string): Promise<ProductSpecifications | null> {
+  const res = await pool.query(
+    `SELECT brand, weight_min_g, weight_max_g, raw_payload FROM cj_product WHERE id = $1`,
+    [productId]
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+
+  const payload = row.raw_payload ?? {};
+  return {
+    material: firstOfArrayField(payload.materialNameEn),
+    packaging: firstOfArrayField(payload.packingNameEn),
+    weightG:
+      row.weight_min_g != null && row.weight_max_g != null
+        ? { min: Number(row.weight_min_g), max: Number(row.weight_max_g) }
+        : null,
+    brand: row.brand ?? null,
+  };
+}
+
 export async function getProductReviews(productId: string, limit = 20): Promise<ProductReview[]> {
   const [cjRes, customerRes] = await Promise.all([
     pool.query(

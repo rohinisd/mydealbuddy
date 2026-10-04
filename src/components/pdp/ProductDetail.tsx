@@ -20,6 +20,10 @@ interface ShippingOption {
   maxDays: number | null;
 }
 
+function formatWeight(grams: number): string {
+  return grams >= 1000 ? `${(grams / 1000).toFixed(2)} kg` : `${Math.round(grams)} g`;
+}
+
 function ratingDistribution(reviews: ProductReview[]) {
   const counts = [5, 4, 3, 2, 1].map((stars) => ({
     stars,
@@ -54,13 +58,22 @@ interface ProductVideo {
   source: "cj" | "admin";
 }
 
+interface ProductSpecifications {
+  material: string | null;
+  packaging: string | null;
+  weightG: { min: number; max: number } | null;
+  brand: string | null;
+}
+
 export function ProductDetail({
   product,
+  specifications,
   related,
   reviews,
   video,
 }: {
   product: Product;
+  specifications: ProductSpecifications | null;
   related: Product[];
   reviews: ProductReview[];
   video: ProductVideo | null;
@@ -341,6 +354,34 @@ export function ProductDetail({
             <dt className="text-text-muted">Availability</dt>
             <dd className="font-medium text-text-primary">{product.inStock === false ? "Out of stock" : "In stock"}</dd>
           </div>
+          {specifications?.brand && (
+            <div className="flex justify-between border-b border-border py-2 sm:justify-start sm:gap-4">
+              <dt className="text-text-muted">Brand</dt>
+              <dd className="font-medium text-text-primary">{specifications.brand}</dd>
+            </div>
+          )}
+          {specifications?.material && (
+            <div className="flex justify-between border-b border-border py-2 sm:justify-start sm:gap-4">
+              <dt className="text-text-muted">Material</dt>
+              <dd className="font-medium text-text-primary">{specifications.material}</dd>
+            </div>
+          )}
+          {specifications?.packaging && (
+            <div className="flex justify-between border-b border-border py-2 sm:justify-start sm:gap-4">
+              <dt className="text-text-muted">Packaging</dt>
+              <dd className="font-medium text-text-primary">{specifications.packaging}</dd>
+            </div>
+          )}
+          {specifications?.weightG && (
+            <div className="flex justify-between border-b border-border py-2 sm:justify-start sm:gap-4">
+              <dt className="text-text-muted">Weight</dt>
+              <dd className="font-medium text-text-primary">
+                {specifications.weightG.min === specifications.weightG.max
+                  ? formatWeight(specifications.weightG.min)
+                  : `${formatWeight(specifications.weightG.min)} – ${formatWeight(specifications.weightG.max)}`}
+              </dd>
+            </div>
+          )}
         </dl>
       </div>
 
