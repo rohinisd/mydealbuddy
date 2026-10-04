@@ -8,7 +8,7 @@ import { getCustomerLoyaltyStatus } from "@/lib/loyalty-tiers";
 import { findCustomerById } from "@/lib/customers";
 import { getCartShippingEstimate } from "@/lib/cart-shipping";
 import { calculateTax } from "@/lib/tax";
-import { sendReferralConversionEmail } from "@/lib/email";
+import { sendReferralConversionEmail, sendRewardEmail } from "@/lib/email";
 
 export const REFERRAL_BONUS_COINS = 50; // credited to the referrer
 export const REFERRED_SIGNUP_BONUS_COINS = 25; // credited to the new customer
@@ -194,7 +194,7 @@ async function insertOrderRecord(resolved: ResolvedOrder): Promise<Order> {
     // Referral reward triggers on the referred customer's first order, per the
     // product doc ("registers" + "completes minimum qualified purchase") --
     // not applicable to guest orders, there's no account to have been referred.
-    let referralEmailInfo: { referrerId: string; newCustomerFirstName: string } | null = null;
+    let referralEmailInfo: { referrerId: string; newCustomerEmail: string; newCustomerFirstName: string } | null = null;
     if (resolved.customerId) {
       const orderCountRes = await client.query(`SELECT COUNT(*) AS n FROM customer_order WHERE customer_id = $1`, [
         resolved.customerId,
@@ -211,7 +211,7 @@ async function insertOrderRecord(resolved: ResolvedOrder): Promise<Order> {
             `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1,$2,'referred_signup_bonus',$3)`,
             [resolved.customerId, REFERRED_SIGNUP_BONUS_COINS, orderRow.id]
           );
-          referralEmailInfo = { referrerId: customer.referredByCustomerId, newCustomerFirstName: customer.firstName };
+          referralEmailInfo = { referrerId: customer.referredByCustomerId, newCustomerEmail: customer.email, newCustomerFirstName: customer.firstName };
         }
       }
     }
@@ -221,6 +221,9 @@ async function insertOrderRecord(resolved: ResolvedOrder): Promise<Order> {
     // Best-effort, outside the transaction -- the referrer isn't present for
     // this event (it happens on someone else's order), so this is the only
     // way they'd find out they earned a bonus without checking their account.
+    // The new customer's own welcome bonus similarly isn't mentioned anywhere
+    // else -- it's a separate ledger credit from the order's own
+    // buddyCoinsEarned total, so the order confirmation email doesn't cover it.
     if (referralEmailInfo) {
       findCustomerById(referralEmailInfo.referrerId)
         .then((referrer) => {
@@ -228,6 +231,10 @@ async function insertOrderRecord(resolved: ResolvedOrder): Promise<Order> {
           return sendReferralConversionEmail(referrer.email, referrer.firstName, referralEmailInfo!.newCustomerFirstName, REFERRAL_BONUS_COINS);
         })
         .catch((err) => console.error("Failed to send referral conversion email:", err));
+
+      sendRewardEmail(referralEmailInfo.newCustomerEmail, referralEmailInfo.newCustomerFirstName, REFERRED_SIGNUP_BONUS_COINS, "welcome to MyDealBuddy, thanks for using a referral link").catch(
+        (err) => console.error("Failed to send welcome-bonus reward email:", err)
+      );
     }
 
     return rowToOrder(orderRow, resolved.resolvedLines);

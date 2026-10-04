@@ -112,6 +112,26 @@ export async function sendReferralConversionEmail(to: string, referrerFirstName:
   );
 }
 
+/**
+ * Generic "you just earned coins" notification -- for earn events that have
+ * no other touchpoint. Purchase-earned coins are already mentioned inline in
+ * the order confirmation email, and the referrer's own bonus already has its
+ * own dedicated email (sendReferralConversionEmail) -- this covers the rest
+ * (review bonus, the referred customer's own welcome bonus, etc.) so every
+ * coin credit has *some* email, not just the ones that happened to already
+ * have one.
+ */
+export async function sendRewardEmail(to: string, firstName: string, amount: number, reasonLabel: string): Promise<void> {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  await sendEmail(
+    to,
+    `You earned ${amount} Buddy Coins!`,
+    `<p>Hi ${escapeHtml(firstName)},</p>
+     <p>You just earned <strong>${amount} Buddy Coins</strong> — ${escapeHtml(reasonLabel)}.</p>
+     <p><a href="${siteUrl}/account/buddy-coins">See your balance</a></p>`
+  );
+}
+
 export interface PriceDropItem {
   productId: string;
   productName: string;

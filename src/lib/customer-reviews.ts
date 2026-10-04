@@ -1,6 +1,7 @@
 import "server-only";
 import { pool } from "@/lib/db";
 import { uploadToBlob, deleteFromBlob } from "@/lib/blob";
+import { sendRewardEmail } from "@/lib/email";
 
 export interface ReviewStatus {
   loggedIn: boolean;
@@ -95,6 +96,21 @@ export async function submitReview(
     }
 
     await client.query("COMMIT");
+
+    if (isFirstReview) {
+      // Best-effort, outside the transaction -- this is the only email a
+      // review bonus gets; the in-app success message already covers the
+      // customer's own session, but they're not always still looking at it.
+      pool
+        .query(`SELECT email, first_name FROM customer WHERE id = $1`, [customerId])
+        .then((r) => {
+          const row = r.rows[0];
+          if (!row) return;
+          return sendRewardEmail(row.email, row.first_name, REVIEW_BONUS_COINS, "thanks for reviewing a product you bought");
+        })
+        .catch((err) => console.error("Failed to send review-bonus reward email:", err));
+    }
+
     return { reviewId, coinsEarned: isFirstReview ? REVIEW_BONUS_COINS : 0 };
   } catch (err) {
     await client.query("ROLLBACK");
