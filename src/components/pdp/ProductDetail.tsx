@@ -443,6 +443,19 @@ export function ProductDetail({
                 {review.date && <span className="text-xs text-text-muted">· {review.date}</span>}
               </div>
               <p className="mt-1.5 text-sm text-text-secondary">{review.text}</p>
+              {review.photos && review.photos.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {review.photos.map((url, i) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={i}
+                      src={url}
+                      alt=""
+                      className="h-20 w-20 rounded-md border border-border object-cover"
+                    />
+                  ))}
+                </div>
+              )}
             </li>
           ))}
         </ul>

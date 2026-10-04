@@ -1,10 +1,11 @@
 import "server-only";
 import { pool } from "@/lib/db";
+import { uploadToBlob, deleteFromBlob } from "@/lib/blob";
 
 export interface ReviewStatus {
   loggedIn: boolean;
   eligible: boolean;
-  existingReview: { rating: number; body: string } | null;
+  existingReview: { id: string; rating: number; body: string; photos: { id: string; url: string }[] } | null;
 }
 
 // "Verified buyer" is gated on having ordered the product, not on payment
@@ -24,16 +25,30 @@ export async function getReviewStatus(customerId: string | null, productId: stri
        LIMIT 1`,
       [customerId, productId]
     ),
-    pool.query(`SELECT rating, body FROM customer_product_review WHERE customer_id = $1 AND product_id = $2`, [
+    pool.query(`SELECT id, rating, body FROM customer_product_review WHERE customer_id = $1 AND product_id = $2`, [
       customerId,
       productId,
     ]),
   ]);
 
+  const existingRow = existingRes.rows[0];
+  if (!existingRow) {
+    return { loggedIn: true, eligible: eligibleRes.rows.length > 0, existingReview: null };
+  }
+
+  const photosRes = await pool.query(`SELECT id, url FROM customer_review_photo WHERE review_id = $1 ORDER BY position`, [
+    existingRow.id,
+  ]);
+
   return {
     loggedIn: true,
     eligible: eligibleRes.rows.length > 0,
-    existingReview: existingRes.rows[0] ? { rating: Number(existingRes.rows[0].rating), body: existingRes.rows[0].body } : null,
+    existingReview: {
+      id: String(existingRow.id),
+      rating: Number(existingRow.rating),
+      body: existingRow.body,
+      photos: photosRes.rows.map((p) => ({ id: String(p.id), url: p.url })),
+    },
   };
 }
 
@@ -41,8 +56,13 @@ export class ReviewError extends Error {}
 
 export const REVIEW_BONUS_COINS = 20;
 
-/** Returns the number of Buddy Coins just credited -- 0 when this was an edit of an existing review, not a first-time one. */
-export async function submitReview(customerId: string, productId: string, rating: number, body: string): Promise<number> {
+/** Returns the saved review's id and the number of Buddy Coins just credited -- 0 coins when this was an edit of an existing review, not a first-time one. */
+export async function submitReview(
+  customerId: string,
+  productId: string,
+  rating: number,
+  body: string
+): Promise<{ reviewId: string; coinsEarned: number }> {
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new ReviewError("Rating must be 1-5.");
   if (!body.trim()) throw new ReviewError("Review text is required.");
 
@@ -61,9 +81,10 @@ export async function submitReview(customerId: string, productId: string, rating
       `INSERT INTO customer_product_review (product_id, customer_id, rating, body)
        VALUES ($1,$2,$3,$4)
        ON CONFLICT (product_id, customer_id) DO UPDATE SET rating = $3, body = $4, updated_at = now()
-       RETURNING (xmax = 0) AS inserted`,
+       RETURNING id, (xmax = 0) AS inserted`,
       [productId, customerId, rating, body.trim()]
     );
+    const reviewId = String(res.rows[0].id);
     const isFirstReview = res.rows[0].inserted as boolean;
 
     if (isFirstReview) {
@@ -74,11 +95,62 @@ export async function submitReview(customerId: string, productId: string, rating
     }
 
     await client.query("COMMIT");
-    return isFirstReview ? REVIEW_BONUS_COINS : 0;
+    return { reviewId, coinsEarned: isFirstReview ? REVIEW_BONUS_COINS : 0 };
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;
   } finally {
     client.release();
   }
+}
+
+const MAX_REVIEW_PHOTOS = 5;
+
+export class ReviewPhotoError extends Error {}
+
+/** Verifies the review belongs to this customer before touching Blob storage or the DB -- same ownership-check-before-mutation pattern as detachPaymentMethod. */
+async function assertOwnsReview(reviewId: string, customerId: string): Promise<void> {
+  const res = await pool.query(`SELECT 1 FROM customer_product_review WHERE id = $1 AND customer_id = $2`, [
+    reviewId,
+    customerId,
+  ]);
+  if (res.rows.length === 0) throw new ReviewPhotoError("Review not found.");
+}
+
+export async function addReviewPhoto(
+  reviewId: string,
+  customerId: string,
+  buffer: Buffer,
+  contentType: string
+): Promise<{ id: string; url: string }> {
+  await assertOwnsReview(reviewId, customerId);
+
+  const countRes = await pool.query(`SELECT COUNT(*) AS n FROM customer_review_photo WHERE review_id = $1`, [reviewId]);
+  if (Number(countRes.rows[0].n) >= MAX_REVIEW_PHOTOS) {
+    throw new ReviewPhotoError(`A review can have up to ${MAX_REVIEW_PHOTOS} photos.`);
+  }
+
+  const blobUrl = await uploadToBlob(`review-photos/${reviewId}-${Date.now()}`, buffer, contentType);
+  const maxPos = await pool.query(`SELECT COALESCE(MAX(position), -1) AS max FROM customer_review_photo WHERE review_id = $1`, [
+    reviewId,
+  ]);
+  const insertRes = await pool.query(
+    `INSERT INTO customer_review_photo (review_id, url, position) VALUES ($1, $2, $3) RETURNING id`,
+    [reviewId, blobUrl, Number(maxPos.rows[0].max) + 1]
+  );
+  return { id: String(insertRes.rows[0].id), url: blobUrl };
+}
+
+export async function deleteReviewPhoto(photoId: string, customerId: string): Promise<void> {
+  const res = await pool.query(
+    `SELECT p.url FROM customer_review_photo p
+     JOIN customer_product_review r ON r.id = p.review_id
+     WHERE p.id = $1 AND r.customer_id = $2`,
+    [photoId, customerId]
+  );
+  const row = res.rows[0];
+  if (!row) throw new ReviewPhotoError("Photo not found.");
+
+  await deleteFromBlob(row.url).catch(() => {});
+  await pool.query(`DELETE FROM customer_review_photo WHERE id = $1`, [photoId]);
 }

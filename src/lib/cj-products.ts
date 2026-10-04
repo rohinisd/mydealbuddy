@@ -242,15 +242,18 @@ export async function getProductSpecifications(productId: string): Promise<Produ
 export async function getProductReviews(productId: string, limit = 20): Promise<ProductReview[]> {
   const [cjRes, customerRes] = await Promise.all([
     pool.query(
-      `SELECT id, author_masked, score, body, commented_at
+      `SELECT id, author_masked, score, body, commented_at, image_urls
        FROM cj_product_review WHERE product_id = $1 ORDER BY commented_at DESC NULLS LAST LIMIT $2`,
       [productId, limit]
     ),
     pool.query(
-      `SELECT r.id, r.rating, r.body, r.created_at, c.first_name
+      `SELECT r.id, r.rating, r.body, r.created_at, c.first_name,
+              COALESCE(array_agg(p.url ORDER BY p.position) FILTER (WHERE p.id IS NOT NULL), '{}') AS photo_urls
        FROM customer_product_review r
        JOIN customer c ON c.id = r.customer_id
+       LEFT JOIN customer_review_photo p ON p.review_id = r.id
        WHERE r.product_id = $1
+       GROUP BY r.id, c.first_name
        ORDER BY r.created_at DESC LIMIT $2`,
       [productId, limit]
     ),
@@ -264,6 +267,7 @@ export async function getProductReviews(productId: string, limit = 20): Promise<
       rating: r.score,
       date: r.commented_at ? new Date(r.commented_at).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "",
       text: r.body,
+      photos: r.image_urls?.length ? r.image_urls : undefined,
       sortKey: r.commented_at ? new Date(r.commented_at).getTime() : 0,
     }));
 
@@ -274,6 +278,7 @@ export async function getProductReviews(productId: string, limit = 20): Promise<
     date: new Date(r.created_at).toLocaleDateString(undefined, { month: "short", year: "numeric" }),
     text: r.body,
     verified: true,
+    photos: r.photo_urls?.length ? r.photo_urls : undefined,
     sortKey: new Date(r.created_at).getTime(),
   }));
 

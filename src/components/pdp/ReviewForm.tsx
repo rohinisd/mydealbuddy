@@ -5,11 +5,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { StarIcon } from "@/components/icons/Icons";
 
+interface ReviewPhoto {
+  id: string;
+  url: string;
+}
+
 interface ReviewStatus {
   loggedIn: boolean;
   eligible: boolean;
-  existingReview: { rating: number; body: string } | null;
+  existingReview: { id: string; rating: number; body: string; photos: ReviewPhoto[] } | null;
 }
+
+const MAX_PHOTOS = 5;
 
 export function ReviewForm({ productId }: { productId: string }) {
   const router = useRouter();
@@ -19,6 +26,10 @@ export function ReviewForm({ productId }: { productId: string }) {
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [reviewId, setReviewId] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<ReviewPhoto[]>([]);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [removingPhotoId, setRemovingPhotoId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`/api/products/${productId}/review-status`)
@@ -28,6 +39,8 @@ export function ReviewForm({ productId }: { productId: string }) {
         if (data.existingReview) {
           setRating(data.existingReview.rating);
           setBody(data.existingReview.body);
+          setReviewId(data.existingReview.id);
+          setPhotos(data.existingReview.photos);
         }
       })
       .catch(() => setStatus({ loggedIn: false, eligible: false, existingReview: null }));
@@ -48,6 +61,7 @@ export function ReviewForm({ productId }: { productId: string }) {
         setMessage(data.error || "Something went wrong.");
         return;
       }
+      setReviewId(data.reviewId);
       setMessage(
         data.coinsEarned > 0
           ? `Thanks — your review is live. You earned ${data.coinsEarned} Buddy Coins!`
@@ -56,6 +70,46 @@ export function ReviewForm({ productId }: { productId: string }) {
       router.refresh();
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleAddPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !reviewId) return;
+    setUploadingPhoto(true);
+    setMessage(null);
+    try {
+      const formData = new FormData();
+      formData.append("photo", file);
+      const res = await fetch(`/api/reviews/${reviewId}/photos`, { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.error || "Failed to upload photo.");
+        return;
+      }
+      setPhotos((prev) => [...prev, { id: data.id, url: data.url }]);
+      router.refresh();
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
+  async function handleRemovePhoto(photoId: string) {
+    if (!reviewId) return;
+    setRemovingPhotoId(photoId);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}/photos/${photoId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        setMessage(data.error || "Failed to remove photo.");
+        return;
+      }
+      setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+      router.refresh();
+    } finally {
+      setRemovingPhotoId(null);
     }
   }
 
@@ -115,6 +169,36 @@ export function ReviewForm({ productId }: { productId: string }) {
       >
         {submitting ? "Submitting..." : status.existingReview ? "Update Review" : "Submit Review"}
       </button>
+
+      {reviewId && (
+        <div className="mt-4 border-t border-border pt-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Photos</p>
+          <div className="flex flex-wrap gap-2">
+            {photos.map((photo) => (
+              <div key={photo.id} className="group relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photo.url} alt="" className="h-16 w-16 rounded-md border border-border object-cover" />
+                <button
+                  type="button"
+                  disabled={removingPhotoId === photo.id}
+                  onClick={() => handleRemovePhoto(photo.id)}
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-discount text-xs font-bold text-white opacity-0 group-hover:opacity-100 disabled:opacity-60"
+                  aria-label="Remove photo"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {photos.length < MAX_PHOTOS && (
+              <label className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-md border border-dashed border-border-strong text-xs text-text-muted hover:border-accent">
+                {uploadingPhoto ? "..." : "+ Add"}
+                <input type="file" accept="image/*" className="hidden" disabled={uploadingPhoto} onChange={handleAddPhoto} />
+              </label>
+            )}
+          </div>
+        </div>
+      )}
+
       {message && <p className="mt-2 text-sm text-text-secondary">{message}</p>}
     </form>
   );
