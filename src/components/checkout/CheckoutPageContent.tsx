@@ -141,6 +141,7 @@ export function CheckoutPageContent({
   const [paymentMethod, setPaymentMethod] = useState<"paypal" | "card">("paypal");
   const [coinBalance, setCoinBalance] = useState(0);
   const [coinsToRedeemInput, setCoinsToRedeemInput] = useState("");
+  const [customerSessionClientSecret, setCustomerSessionClientSecret] = useState<string | null>(null);
 
   useEffect(() => {
     if (isGuest) return;
@@ -155,6 +156,13 @@ export function CheckoutPageContent({
     fetch("/api/account/buddy-coins")
       .then((r) => r.json())
       .then((data: { balance: number }) => setCoinBalance(data.balance ?? 0))
+      .catch(() => {});
+    // Lets the card Payment Element show this customer's saved cards, plus
+    // "save this card" on a new one -- guests have no Stripe Customer to
+    // attach saved cards to, so this is skipped for them entirely.
+    fetch("/api/checkout/stripe/customer-session", { method: "POST" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { clientSecret: string } | null) => setCustomerSessionClientSecret(data?.clientSecret ?? null))
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time load on mount
   }, [isGuest]);
@@ -583,6 +591,7 @@ export function CheckoutPageContent({
                   amount: Math.max(50, Math.round(total * 100)),
                   currency: "usd",
                   paymentMethodTypes: ["card"],
+                  ...(customerSessionClientSecret ? { customerSessionClientSecret } : {}),
                 }}
               >
                 <StripeCardForm

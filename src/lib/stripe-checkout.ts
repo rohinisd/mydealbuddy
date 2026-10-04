@@ -5,10 +5,11 @@ import { createStripePaymentIntent, retrieveStripePaymentIntent } from "@/lib/st
 import { fulfillOrderWithCj } from "@/lib/cj-fulfillment";
 
 export async function createPendingStripeOrder(
-  input: ResolveOrderInput
+  input: ResolveOrderInput,
+  stripeCustomerId?: string
 ): Promise<{ clientSecret: string; paymentIntentId: string; total: number }> {
   const resolved = await resolveOrder(input);
-  const { paymentIntentId, clientSecret } = await createStripePaymentIntent(resolved.total);
+  const { paymentIntentId, clientSecret } = await createStripePaymentIntent(resolved.total, "usd", { stripeCustomerId });
 
   await pool.query(
     `INSERT INTO stripe_pending_order

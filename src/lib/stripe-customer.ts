@@ -69,6 +69,31 @@ export async function detachPaymentMethod(paymentMethodId: string): Promise<void
   await stripe.paymentMethods.detach(paymentMethodId);
 }
 
+/**
+ * Lets the checkout page's Payment Element show this customer's saved cards
+ * (with a selector, plus "add new" and "save this card" controls) without
+ * the server having created the PaymentIntent yet -- the deferred-intent
+ * pattern this checkout already uses for instant card-field rendering.
+ */
+export async function createCheckoutCustomerSession(stripeCustomerId: string): Promise<{ clientSecret: string }> {
+  const stripe = getStripeClient();
+  const session = await stripe.customerSessions.create({
+    customer: stripeCustomerId,
+    components: {
+      payment_element: {
+        enabled: true,
+        features: {
+          payment_method_redisplay: "enabled",
+          payment_method_save: "enabled",
+          payment_method_save_usage: "off_session",
+          payment_method_remove: "enabled",
+        },
+      },
+    },
+  });
+  return { clientSecret: session.client_secret };
+}
+
 /** Which Stripe Customer a payment method belongs to -- callers must check this against the logged-in customer before detaching, so one customer can't remove another's saved card by guessing its id. Returns null for a nonexistent id, same as "no owner", rather than letting Stripe's error bubble up as a 500. */
 export async function getPaymentMethodOwner(paymentMethodId: string): Promise<string | null> {
   const stripe = getStripeClient();

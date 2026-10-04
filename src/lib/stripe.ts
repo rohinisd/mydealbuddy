@@ -28,7 +28,11 @@ export interface StripePaymentIntentResult {
   clientSecret: string;
 }
 
-export async function createStripePaymentIntent(amount: number, currency = "usd"): Promise<StripePaymentIntentResult> {
+export async function createStripePaymentIntent(
+  amount: number,
+  currency = "usd",
+  options?: { stripeCustomerId?: string }
+): Promise<StripePaymentIntentResult> {
   const stripe = getStripeClient();
   const intent = await stripe.paymentIntents.create({
     amount: Math.round(amount * 100),
@@ -41,6 +45,13 @@ export async function createStripePaymentIntent(amount: number, currency = "usd"
     // for the vast majority of cards -- a genuine full-page 3DS redirect is
     // the one gap this doesn't resume from.
     payment_method_types: ["card"],
+    // Attaching the customer + setup_future_usage is what lets a logged-in
+    // customer both pick a previously-saved card (selected via the Customer
+    // Session on the Elements side) and have a newly-entered card offered to
+    // save for next time -- see src/lib/stripe-customer.ts.
+    ...(options?.stripeCustomerId
+      ? { customer: options.stripeCustomerId, setup_future_usage: "off_session" as const }
+      : {}),
   });
   if (!intent.client_secret) throw new Error("Stripe did not return a client secret for the new PaymentIntent.");
   return { paymentIntentId: intent.id, clientSecret: intent.client_secret };
