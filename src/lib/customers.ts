@@ -12,6 +12,7 @@ export interface Customer {
   emailVerifiedAt: string | null;
   referralCode: string;
   referredByCustomerId: string | null;
+  hasPassword: boolean;
   createdAt: string;
 }
 
@@ -24,6 +25,7 @@ export function rowToCustomer(row: Record<string, unknown>): Customer {
     emailVerifiedAt: row.email_verified_at ? new Date(row.email_verified_at as string).toISOString() : null,
     referralCode: row.referral_code as string,
     referredByCustomerId: row.referred_by_customer_id != null ? String(row.referred_by_customer_id) : null,
+    hasPassword: row.password_hash != null,
     createdAt: new Date(row.created_at as string).toISOString(),
   };
 }
@@ -97,6 +99,47 @@ export async function createCustomer(input: CreateCustomerInput): Promise<Custom
     ]
   );
   return rowToCustomer(res.rows[0]);
+}
+
+export async function updateCustomerName(customerId: string, firstName: string, lastName: string): Promise<void> {
+  await pool.query(`UPDATE customer SET first_name = $1, last_name = $2 WHERE id = $3`, [
+    firstName.trim(),
+    lastName.trim(),
+    customerId,
+  ]);
+}
+
+export class EmailTakenError extends Error {}
+
+/** Changing email un-verifies it -- caller is responsible for sending a fresh verification email. */
+export async function updateCustomerEmail(customerId: string, newEmail: string): Promise<void> {
+  const trimmed = newEmail.trim().toLowerCase();
+  const existing = await findCustomerByEmail(trimmed);
+  if (existing && existing.id !== customerId) {
+    throw new EmailTakenError("That email is already in use by another account.");
+  }
+  await pool.query(`UPDATE customer SET email = $1, email_verified_at = NULL WHERE id = $2`, [trimmed, customerId]);
+}
+
+export class WrongPasswordError extends Error {}
+
+/**
+ * Covers both "change my password" (hasPassword=true, requires the current
+ * one) and "set a password" for a Google-only account that never had one --
+ * currentPassword is required only in the former case.
+ */
+export async function changeCustomerPassword(customerId: string, currentPassword: string | null, newPassword: string): Promise<void> {
+  const res = await pool.query(`SELECT password_hash FROM customer WHERE id = $1`, [customerId]);
+  const storedHash = res.rows[0]?.password_hash as string | null | undefined;
+
+  if (storedHash) {
+    if (!currentPassword || !(await verifyPassword(currentPassword, storedHash))) {
+      throw new WrongPasswordError("Current password is incorrect.");
+    }
+  }
+
+  const newHash = await hashPassword(newPassword);
+  await pool.query(`UPDATE customer SET password_hash = $1 WHERE id = $2`, [newHash, customerId]);
 }
 
 export async function verifyCustomerPassword(email: string, password: string): Promise<Customer | null> {

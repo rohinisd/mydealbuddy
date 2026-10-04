@@ -6,15 +6,17 @@ import { Breadcrumb } from "@/components/plp/Breadcrumb";
 
 const NAV_LINKS = [
   { label: "Overview", href: "/my-account" },
+  { label: "Profile", href: "/account/profile" },
   { label: "Orders", href: "/account/orders" },
   { label: "Addresses", href: "/account/addresses" },
+  { label: "Payment Methods", href: "/account/payment-methods" },
   { label: "Wishlist", href: "/account/wishlist" },
   { label: "Buddy Coins", href: "/account/buddy-coins" },
   { label: "Referrals", href: "/account/referrals" },
   { label: "Coupons", href: "/account/coupons" },
 ];
 
-const COMING_SOON = ["Profile", "Saved Payments"];
+const COMING_SOON: string[] = [];
 
 export function AccountLayout({
   title,
