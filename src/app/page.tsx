@@ -14,7 +14,7 @@ import { getCuratedListProducts } from "@/lib/curated-lists";
 export const revalidate = 60;
 
 export default async function Home() {
-  const [products, heroSlides, promoBanners, dealCards, dealOfTheDay, trendingDeals, newIn] = await Promise.all([
+  const [products, heroSlides, promoBanners, dealCards, dealOfTheDay, trendingDeals, newIn, holidayPicks] = await Promise.all([
     getAllProducts(),
     getActiveHomepageBlocks("hero_slide"),
     getActiveHomepageBlocks("promo_banner"),
@@ -22,12 +22,13 @@ export default async function Home() {
     getCuratedListProducts("deal-of-the-day", 1),
     getCuratedListProducts("trending-deals"),
     getCuratedListProducts("new-in"),
+    getCuratedListProducts("holiday-picks"),
   ]);
   // CJ-synced products have no rating data, so "Top Collection" just falls
-  // back to catalog order. Deal of the Day / Trending Deals / New In are all
-  // admin-curated real products (see /admin/curated-lists) -- each rail
-  // renders nothing until the admin actually picks something for it, rather
-  // than showing a fake placeholder.
+  // back to catalog order. Deal of the Day / Trending Deals / New In / Holiday
+  // Picks are all admin-curated real products (see /admin/curated-lists) --
+  // each rail renders nothing until the admin actually picks something for
+  // it, rather than showing a fake placeholder.
   const TOP_COLLECTION = [...products].sort((a, b) => (b.ratingCount ?? 0) - (a.ratingCount ?? 0)).slice(0, 10);
 
   return (
@@ -46,6 +47,8 @@ export default async function Home() {
         <ProductRail pillLabel="Trending Deals" title="Trending Deals" viewAllHref="/deals" products={trendingDeals} />
 
         <ProductRail pillLabel="New In" title="New In" viewAllHref="/shop" products={newIn} />
+
+        <ProductRail pillLabel="Holiday Picks" title="Holiday Collections" viewAllHref="/shop" products={holidayPicks} />
 
         {dealCards.length > 0 && (
           <section className="mx-auto max-w-[1280px] px-4 py-8">

@@ -10,6 +10,7 @@ const LISTS = [
   { key: "hot-deals", label: "Hot Deals", description: "Every product added here shows on the /deals page." },
   { key: "trending-deals", label: "Trending Deals", description: "Homepage rail, in this order." },
   { key: "new-in", label: "New In", description: "Homepage rail, in this order." },
+  { key: "holiday-picks", label: "Holiday Collections", description: "Homepage rail, in this order. Swap products in/out per season/holiday." },
 ] as const;
 
 export default function CuratedListsPage() {

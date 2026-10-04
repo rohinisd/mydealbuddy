@@ -3,7 +3,7 @@ import { pool } from "@/lib/db";
 import { getProductsByIds } from "@/lib/cj-products";
 import type { Product } from "@/types/product";
 
-export const CURATED_LIST_KEYS = ["hot-deals", "deal-of-the-day", "trending-deals", "new-in"] as const;
+export const CURATED_LIST_KEYS = ["hot-deals", "deal-of-the-day", "trending-deals", "new-in", "holiday-picks"] as const;
 export type CuratedListKey = (typeof CURATED_LIST_KEYS)[number];
 
 export function isCuratedListKey(value: string): value is CuratedListKey {
