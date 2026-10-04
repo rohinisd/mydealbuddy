@@ -16,6 +16,7 @@ const REASON_LABEL: Record<BuddyCoinLedgerRow["reason"], string> = {
   redemption: "Redeemed on order",
   redemption_refund: "Redemption refunded",
   refund_clawback: "Refund clawback",
+  review_bonus: "Review bonus",
 };
 
 function describeRow(row: BuddyCoinLedgerRow): string {

@@ -14,8 +14,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const text = typeof body?.body === "string" ? body.body : "";
 
   try {
-    await submitReview(customer.id, id, rating, text);
-    return NextResponse.json({ ok: true });
+    const coinsEarned = await submitReview(customer.id, id, rating, text);
+    return NextResponse.json({ ok: true, coinsEarned });
   } catch (err) {
     if (err instanceof ReviewError) {
       return NextResponse.json({ error: err.message }, { status: 400 });

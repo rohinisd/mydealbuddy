@@ -48,7 +48,11 @@ export function ReviewForm({ productId }: { productId: string }) {
         setMessage(data.error || "Something went wrong.");
         return;
       }
-      setMessage("Thanks — your review is live.");
+      setMessage(
+        data.coinsEarned > 0
+          ? `Thanks — your review is live. You earned ${data.coinsEarned} Buddy Coins!`
+          : "Thanks — your review has been updated."
+      );
       router.refresh();
     } finally {
       setSubmitting(false);

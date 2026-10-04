@@ -443,7 +443,7 @@ export async function getOrderById(orderId: string): Promise<Order | null> {
 export interface BuddyCoinLedgerRow {
   id: string;
   amount: number;
-  reason: "purchase" | "referral_bonus" | "referred_signup_bonus" | "refund_clawback" | "redemption" | "redemption_refund";
+  reason: "purchase" | "referral_bonus" | "referred_signup_bonus" | "refund_clawback" | "redemption" | "redemption_refund" | "review_bonus";
   orderNumber: string | null;
   createdAt: string;
 }

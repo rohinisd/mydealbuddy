@@ -39,17 +39,46 @@ export async function getReviewStatus(customerId: string | null, productId: stri
 
 export class ReviewError extends Error {}
 
-export async function submitReview(customerId: string, productId: string, rating: number, body: string): Promise<void> {
+export const REVIEW_BONUS_COINS = 20;
+
+/** Returns the number of Buddy Coins just credited -- 0 when this was an edit of an existing review, not a first-time one. */
+export async function submitReview(customerId: string, productId: string, rating: number, body: string): Promise<number> {
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new ReviewError("Rating must be 1-5.");
   if (!body.trim()) throw new ReviewError("Review text is required.");
 
   const status = await getReviewStatus(customerId, productId);
   if (!status.eligible) throw new ReviewError("Only customers who've purchased this product can leave a review.");
 
-  await pool.query(
-    `INSERT INTO customer_product_review (product_id, customer_id, rating, body)
-     VALUES ($1,$2,$3,$4)
-     ON CONFLICT (product_id, customer_id) DO UPDATE SET rating = $3, body = $4, updated_at = now()`,
-    [productId, customerId, rating, body.trim()]
-  );
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    // xmax = 0 is the standard Postgres trick for "this row came from the
+    // INSERT, not the ON CONFLICT UPDATE" -- an UPDATE always stamps xmax
+    // with the current transaction. Distinguishes a first-time review
+    // (earns coins) from an edit of an existing one (doesn't, or editing a
+    // review repeatedly would farm Buddy Coins for free).
+    const res = await client.query(
+      `INSERT INTO customer_product_review (product_id, customer_id, rating, body)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (product_id, customer_id) DO UPDATE SET rating = $3, body = $4, updated_at = now()
+       RETURNING (xmax = 0) AS inserted`,
+      [productId, customerId, rating, body.trim()]
+    );
+    const isFirstReview = res.rows[0].inserted as boolean;
+
+    if (isFirstReview) {
+      await client.query(`INSERT INTO buddy_coin_ledger (customer_id, amount, reason) VALUES ($1, $2, 'review_bonus')`, [
+        customerId,
+        REVIEW_BONUS_COINS,
+      ]);
+    }
+
+    await client.query("COMMIT");
+    return isFirstReview ? REVIEW_BONUS_COINS : 0;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }
