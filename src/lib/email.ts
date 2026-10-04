@@ -99,6 +99,19 @@ export async function sendContactNotificationEmail(input: ContactNotificationInp
   );
 }
 
+/** Sent to the REFERRER, not the new customer -- the referrer isn't present when their friend's qualifying order happens, so this is the only way they'd otherwise find out. */
+export async function sendReferralConversionEmail(to: string, referrerFirstName: string, newCustomerFirstName: string, bonusCoins: number): Promise<void> {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  await sendEmail(
+    to,
+    `${newCustomerFirstName} just shopped with your referral — you earned ${bonusCoins} Buddy Coins!`,
+    `<p>Hi ${escapeHtml(referrerFirstName)},</p>
+     <p>${escapeHtml(newCustomerFirstName)} signed up using your referral link and just completed their first order.
+     You've been credited <strong>${bonusCoins} Buddy Coins</strong> as a thank-you.</p>
+     <p><a href="${siteUrl}/account/referrals">See your referral activity</a></p>`
+  );
+}
+
 export interface CartAbandonmentLine {
   productName: string;
   quantity: number;
