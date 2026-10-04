@@ -4,6 +4,7 @@ import { getProductsByIds } from "@/lib/products";
 import { validateCoupon, incrementCouponUsage } from "@/lib/coupons";
 import { BUDDY_COINS_RATE } from "@/lib/cj-products";
 import { COIN_REDEMPTION_RATE } from "@/lib/buddy-coins";
+import { getCustomerLoyaltyStatus } from "@/lib/loyalty-tiers";
 import { findCustomerById } from "@/lib/customers";
 import { getCartShippingEstimate } from "@/lib/cart-shipping";
 import { calculateTax } from "@/lib/tax";
@@ -301,9 +302,15 @@ async function resolveOrder(
   const taxAmount = calculateTax(taxableAmount, input.shipping.countryCode, input.shipping.province);
   const total = taxableAmount + shippingAmount + taxAmount;
   // Guests have no account to credit Buddy Coins to -- 0, not a phantom
-  // amount that implies they earned something they didn't.
+  // amount that implies they earned something they didn't. The loyalty tier
+  // multiplier is the concrete "benefits increase at each level" mechanic --
+  // based on lifetime coins earned *before* this order, so an order can't
+  // retroactively boost its own earn rate.
   const buddyCoinsEarned = input.customerId
-    ? resolvedLines.reduce((sum, l) => sum + Math.round(l.unitPrice * BUDDY_COINS_RATE) * l.quantity, 0)
+    ? Math.round(
+        resolvedLines.reduce((sum, l) => sum + Math.round(l.unitPrice * BUDDY_COINS_RATE) * l.quantity, 0) *
+          (await getCustomerLoyaltyStatus(input.customerId)).tier.earnMultiplier
+      )
     : 0;
 
   return {
