@@ -15,6 +15,7 @@ const STORAGE_KEY = "mdb_wishlist_v1";
 export function WishlistProvider({ children }: { children: React.ReactNode }) {
   const [ids, setIds] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [customerId, setCustomerId] = useState<string | null>(null);
 
   useEffect(() => {
     // State must start empty to match server-rendered HTML, then sync from
@@ -28,12 +29,33 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
       // ignore malformed/unavailable storage
     }
     setHydrated(true);
+
+    // Logged-in-only: mirrors the wishlist server-side so the price-drop
+    // alert cron (see src/lib/wishlist-sync.ts) has something to check
+    // against -- localStorage stays the source of truth for rendering,
+    // same division of responsibility as CartContext.
+    fetch("/api/account/me")
+      .then((r) => r.json())
+      .then((d) => setCustomerId(d.customer?.id ?? null))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
   }, [ids, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated || !customerId) return;
+    const timer = setTimeout(() => {
+      fetch("/api/account/wishlist", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      }).catch(() => {});
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [ids, hydrated, customerId]);
 
   const has = useCallback((productId: string) => ids.includes(productId), [ids]);
 

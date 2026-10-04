@@ -112,6 +112,34 @@ export async function sendReferralConversionEmail(to: string, referrerFirstName:
   );
 }
 
+export interface PriceDropItem {
+  productId: string;
+  productName: string;
+  oldPrice: number;
+  newPrice: number;
+}
+
+export async function sendPriceDropEmail(to: string, items: PriceDropItem[]): Promise<void> {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const rows = items
+    .map(
+      (i) =>
+        `<tr>
+           <td>${escapeHtml(i.productName)}</td>
+           <td style="text-align:right;text-decoration:line-through;color:#888">$${i.oldPrice.toFixed(2)}</td>
+           <td style="text-align:right;font-weight:bold">$${i.newPrice.toFixed(2)}</td>
+         </tr>`
+    )
+    .join("");
+  await sendEmail(
+    to,
+    items.length === 1 ? `Price drop: ${items[0].productName}` : `Price drop on ${items.length} items in your wishlist`,
+    `<p>Good news — the price just dropped on something in your wishlist:</p>
+     <table style="width:100%;border-collapse:collapse">${rows}</table>
+     <p><a href="${siteUrl}/account/wishlist">View your wishlist</a></p>`
+  );
+}
+
 export interface CartAbandonmentLine {
   productName: string;
   quantity: number;
