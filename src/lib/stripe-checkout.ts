@@ -14,8 +14,8 @@ export async function createPendingStripeOrder(
   await pool.query(
     `INSERT INTO stripe_pending_order
        (stripe_payment_intent_id, customer_id, lines_json, coupon_code, subtotal, discount_amount, shipping_amount,
-        tax_amount, total, buddy_coins_earned, coins_redeemed, shipping_json)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        tax_amount, total, buddy_coins_earned, coins_redeemed, campaign_flat_bonus, campaign_title, shipping_json)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
     [
       paymentIntentId,
       resolved.customerId,
@@ -28,6 +28,8 @@ export async function createPendingStripeOrder(
       resolved.total,
       resolved.buddyCoinsEarned,
       resolved.coinsRedeemed,
+      resolved.campaignFlatBonus,
+      resolved.campaignTitle,
       JSON.stringify(resolved.shipping),
     ]
   );
@@ -72,6 +74,8 @@ export async function confirmPendingStripeOrder(paymentIntentId: string): Promis
       total: Number(pending.total),
       buddyCoinsEarned: Number(pending.buddy_coins_earned),
       coinsRedeemed: Number(pending.coins_redeemed ?? 0),
+      campaignFlatBonus: Number(pending.campaign_flat_bonus ?? 0),
+      campaignTitle: pending.campaign_title ?? null,
       shipping: pending.shipping_json,
     },
     paymentIntentId

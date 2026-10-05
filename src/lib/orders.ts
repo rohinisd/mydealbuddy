@@ -5,6 +5,7 @@ import { validateCoupon, incrementCouponUsage } from "@/lib/coupons";
 import { BUDDY_COINS_RATE } from "@/lib/cj-products";
 import { COIN_REDEMPTION_RATE } from "@/lib/buddy-coins";
 import { getCustomerLoyaltyStatus } from "@/lib/loyalty-tiers";
+import { getActiveCampaign } from "@/lib/campaigns";
 import { findCustomerById } from "@/lib/customers";
 import { getCartShippingEstimate } from "@/lib/cart-shipping";
 import { calculateTax } from "@/lib/tax";
@@ -94,6 +95,8 @@ interface ResolvedOrder {
   total: number;
   buddyCoinsEarned: number;
   coinsRedeemed: number;
+  campaignFlatBonus: number;
+  campaignTitle: string | null;
   shipping: ShippingInput;
   status: "pending_payment" | "paid";
   paymentMethod: "paypal" | "stripe";
@@ -161,6 +164,13 @@ async function insertOrderRecord(resolved: ResolvedOrder): Promise<Order> {
       await client.query(
         `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1,$2,'purchase',$3)`,
         [resolved.customerId, resolved.buddyCoinsEarned, orderRow.id]
+      );
+    }
+
+    if (resolved.campaignFlatBonus > 0 && resolved.customerId) {
+      await client.query(
+        `INSERT INTO buddy_coin_ledger (customer_id, amount, reason, order_id) VALUES ($1,$2,'campaign_bonus',$3)`,
+        [resolved.customerId, resolved.campaignFlatBonus, orderRow.id]
       );
     }
 
@@ -235,6 +245,18 @@ async function insertOrderRecord(resolved: ResolvedOrder): Promise<Order> {
       sendRewardEmail(referralEmailInfo.newCustomerEmail, referralEmailInfo.newCustomerFirstName, REFERRED_SIGNUP_BONUS_COINS, "welcome to MyDealBuddy, thanks for using a referral link").catch(
         (err) => console.error("Failed to send welcome-bonus reward email:", err)
       );
+    }
+
+    if (resolved.campaignFlatBonus > 0 && resolved.customerId && resolved.campaignTitle) {
+      const title = resolved.campaignTitle;
+      pool
+        .query(`SELECT email, first_name FROM customer WHERE id = $1`, [resolved.customerId])
+        .then((r) => {
+          const row = r.rows[0];
+          if (!row) return;
+          return sendRewardEmail(row.email, row.first_name, resolved.campaignFlatBonus, `our "${title}" promotion`);
+        })
+        .catch((err) => console.error("Failed to send campaign-bonus reward email:", err));
     }
 
     return rowToOrder(orderRow, resolved.resolvedLines);
@@ -328,13 +350,25 @@ async function resolveOrder(
   // amount that implies they earned something they didn't. The loyalty tier
   // multiplier is the concrete "benefits increase at each level" mechanic --
   // based on lifetime coins earned *before* this order, so an order can't
-  // retroactively boost its own earn rate.
-  const buddyCoinsEarned = input.customerId
-    ? Math.round(
-        resolvedLines.reduce((sum, l) => sum + Math.round(l.unitPrice * BUDDY_COINS_RATE) * l.quantity, 0) *
-          (await getCustomerLoyaltyStatus(input.customerId)).tier.earnMultiplier
-      )
-    : 0;
+  // retroactively boost its own earn rate. An active admin campaign can add
+  // a further multiplier (stacks with the tier) or a flat per-order bonus --
+  // see src/lib/campaigns.ts. The flat case is credited as its own ledger
+  // line (reason='campaign_bonus') by insertOrderRecord, not folded into
+  // this number, so it shows up distinctly in Buddy Coins history.
+  let buddyCoinsEarned = 0;
+  let campaignFlatBonus = 0;
+  let campaignTitle: string | null = null;
+  if (input.customerId) {
+    const baseCoins = resolvedLines.reduce((sum, l) => sum + Math.round(l.unitPrice * BUDDY_COINS_RATE) * l.quantity, 0);
+    const tierMultiplier = (await getCustomerLoyaltyStatus(input.customerId)).tier.earnMultiplier;
+    const campaign = await getActiveCampaign();
+    const campaignMultiplier = campaign?.coinBonusType === "multiplier" ? campaign.coinBonusValue : 1;
+    buddyCoinsEarned = Math.round(baseCoins * tierMultiplier * campaignMultiplier);
+    if (campaign?.coinBonusType === "flat" && campaign.coinBonusValue > 0) {
+      campaignFlatBonus = campaign.coinBonusValue;
+      campaignTitle = campaign.title;
+    }
+  }
 
   return {
     customerId: input.customerId,
@@ -342,6 +376,8 @@ async function resolveOrder(
     subtotal,
     discountAmount,
     coinsRedeemed,
+    campaignFlatBonus,
+    campaignTitle,
     couponCode,
     shippingAmount,
     taxAmount,
@@ -473,7 +509,15 @@ export async function getOrderById(orderId: string): Promise<Order | null> {
 export interface BuddyCoinLedgerRow {
   id: string;
   amount: number;
-  reason: "purchase" | "referral_bonus" | "referred_signup_bonus" | "refund_clawback" | "redemption" | "redemption_refund" | "review_bonus";
+  reason:
+    | "purchase"
+    | "referral_bonus"
+    | "referred_signup_bonus"
+    | "refund_clawback"
+    | "redemption"
+    | "redemption_refund"
+    | "review_bonus"
+    | "campaign_bonus";
   orderNumber: string | null;
   createdAt: string;
 }

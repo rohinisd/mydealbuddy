@@ -257,6 +257,9 @@ export default function AdminPage() {
           <Link href="/admin/curated-lists" className="text-sm font-semibold text-text-secondary hover:text-accent">
             Curated Lists →
           </Link>
+          <Link href="/admin/campaigns" className="text-sm font-semibold text-text-secondary hover:text-accent">
+            Campaigns →
+          </Link>
           <Link href="/admin/videos" className="text-sm font-semibold text-text-secondary hover:text-accent">
             Videos →
           </Link>
