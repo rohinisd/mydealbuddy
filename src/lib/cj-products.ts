@@ -247,13 +247,16 @@ export async function getProductReviews(productId: string, limit = 20): Promise<
       [productId, limit]
     ),
     pool.query(
+      // Two independent correlated subqueries, not a double LEFT JOIN + GROUP
+      // BY -- joining both one-to-many tables at once would cross-multiply
+      // (e.g. 3 photos x 2 videos = 6 rows), duplicating entries in both
+      // aggregated arrays.
       `SELECT r.id, r.rating, r.body, r.created_at, c.first_name,
-              COALESCE(array_agg(p.url ORDER BY p.position) FILTER (WHERE p.id IS NOT NULL), '{}') AS photo_urls
+              COALESCE((SELECT array_agg(p.url ORDER BY p.position) FROM customer_review_photo p WHERE p.review_id = r.id), '{}') AS photo_urls,
+              COALESCE((SELECT array_agg(v.url ORDER BY v.position) FROM customer_review_video v WHERE v.review_id = r.id), '{}') AS video_urls
        FROM customer_product_review r
        JOIN customer c ON c.id = r.customer_id
-       LEFT JOIN customer_review_photo p ON p.review_id = r.id
        WHERE r.product_id = $1
-       GROUP BY r.id, c.first_name
        ORDER BY r.created_at DESC LIMIT $2`,
       [productId, limit]
     ),
@@ -279,6 +282,7 @@ export async function getProductReviews(productId: string, limit = 20): Promise<
     text: r.body,
     verified: true,
     photos: r.photo_urls?.length ? r.photo_urls : undefined,
+    videos: r.video_urls?.length ? r.video_urls : undefined,
     sortKey: new Date(r.created_at).getTime(),
   }));
 

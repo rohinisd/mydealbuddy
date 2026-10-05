@@ -10,13 +10,19 @@ interface ReviewPhoto {
   url: string;
 }
 
+interface ReviewVideo {
+  id: string;
+  url: string;
+}
+
 interface ReviewStatus {
   loggedIn: boolean;
   eligible: boolean;
-  existingReview: { id: string; rating: number; body: string; photos: ReviewPhoto[] } | null;
+  existingReview: { id: string; rating: number; body: string; photos: ReviewPhoto[]; videos: ReviewVideo[] } | null;
 }
 
 const MAX_PHOTOS = 5;
+const MAX_VIDEOS = 2;
 
 export function ReviewForm({ productId }: { productId: string }) {
   const router = useRouter();
@@ -30,6 +36,9 @@ export function ReviewForm({ productId }: { productId: string }) {
   const [photos, setPhotos] = useState<ReviewPhoto[]>([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [removingPhotoId, setRemovingPhotoId] = useState<string | null>(null);
+  const [videos, setVideos] = useState<ReviewVideo[]>([]);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [removingVideoId, setRemovingVideoId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`/api/products/${productId}/review-status`)
@@ -41,6 +50,7 @@ export function ReviewForm({ productId }: { productId: string }) {
           setBody(data.existingReview.body);
           setReviewId(data.existingReview.id);
           setPhotos(data.existingReview.photos);
+          setVideos(data.existingReview.videos);
         }
       })
       .catch(() => setStatus({ loggedIn: false, eligible: false, existingReview: null }));
@@ -110,6 +120,46 @@ export function ReviewForm({ productId }: { productId: string }) {
       router.refresh();
     } finally {
       setRemovingPhotoId(null);
+    }
+  }
+
+  async function handleAddVideo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !reviewId) return;
+    setUploadingVideo(true);
+    setMessage(null);
+    try {
+      const formData = new FormData();
+      formData.append("video", file);
+      const res = await fetch(`/api/reviews/${reviewId}/videos`, { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.error || "Failed to upload video.");
+        return;
+      }
+      setVideos((prev) => [...prev, { id: data.id, url: data.url }]);
+      router.refresh();
+    } finally {
+      setUploadingVideo(false);
+    }
+  }
+
+  async function handleRemoveVideo(videoId: string) {
+    if (!reviewId) return;
+    setRemovingVideoId(videoId);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}/videos/${videoId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        setMessage(data.error || "Failed to remove video.");
+        return;
+      }
+      setVideos((prev) => prev.filter((v) => v.id !== videoId));
+      router.refresh();
+    } finally {
+      setRemovingVideoId(null);
     }
   }
 
@@ -193,6 +243,34 @@ export function ReviewForm({ productId }: { productId: string }) {
               <label className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-md border border-dashed border-border-strong text-xs text-text-muted hover:border-accent">
                 {uploadingPhoto ? "..." : "+ Add"}
                 <input type="file" accept="image/*" className="hidden" disabled={uploadingPhoto} onChange={handleAddPhoto} />
+              </label>
+            )}
+          </div>
+        </div>
+      )}
+
+      {reviewId && (
+        <div className="mt-4 border-t border-border pt-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Videos</p>
+          <div className="flex flex-wrap gap-2">
+            {videos.map((video) => (
+              <div key={video.id} className="group relative">
+                <video src={video.url} className="h-20 w-28 rounded-md border border-border object-cover" muted />
+                <button
+                  type="button"
+                  disabled={removingVideoId === video.id}
+                  onClick={() => handleRemoveVideo(video.id)}
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-discount text-xs font-bold text-white opacity-0 group-hover:opacity-100 disabled:opacity-60"
+                  aria-label="Remove video"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {videos.length < MAX_VIDEOS && (
+              <label className="flex h-20 w-28 cursor-pointer items-center justify-center rounded-md border border-dashed border-border-strong text-xs text-text-muted hover:border-accent">
+                {uploadingVideo ? "Uploading..." : "+ Add video"}
+                <input type="file" accept="video/*" className="hidden" disabled={uploadingVideo} onChange={handleAddVideo} />
               </label>
             )}
           </div>

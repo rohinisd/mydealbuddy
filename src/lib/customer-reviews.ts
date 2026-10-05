@@ -6,7 +6,13 @@ import { sendRewardEmail } from "@/lib/email";
 export interface ReviewStatus {
   loggedIn: boolean;
   eligible: boolean;
-  existingReview: { id: string; rating: number; body: string; photos: { id: string; url: string }[] } | null;
+  existingReview: {
+    id: string;
+    rating: number;
+    body: string;
+    photos: { id: string; url: string }[];
+    videos: { id: string; url: string }[];
+  } | null;
 }
 
 // "Verified buyer" is gated on having ordered the product, not on payment
@@ -37,8 +43,9 @@ export async function getReviewStatus(customerId: string | null, productId: stri
     return { loggedIn: true, eligible: eligibleRes.rows.length > 0, existingReview: null };
   }
 
-  const photosRes = await pool.query(`SELECT id, url FROM customer_review_photo WHERE review_id = $1 ORDER BY position`, [
-    existingRow.id,
+  const [photosRes, videosRes] = await Promise.all([
+    pool.query(`SELECT id, url FROM customer_review_photo WHERE review_id = $1 ORDER BY position`, [existingRow.id]),
+    pool.query(`SELECT id, url FROM customer_review_video WHERE review_id = $1 ORDER BY position`, [existingRow.id]),
   ]);
 
   return {
@@ -49,6 +56,7 @@ export async function getReviewStatus(customerId: string | null, productId: stri
       rating: Number(existingRow.rating),
       body: existingRow.body,
       photos: photosRes.rows.map((p) => ({ id: String(p.id), url: p.url })),
+      videos: videosRes.rows.map((v) => ({ id: String(v.id), url: v.url })),
     },
   };
 }
@@ -169,4 +177,51 @@ export async function deleteReviewPhoto(photoId: string, customerId: string): Pr
 
   await deleteFromBlob(row.url).catch(() => {});
   await pool.query(`DELETE FROM customer_review_photo WHERE id = $1`, [photoId]);
+}
+
+// Capped lower than photos (5) -- video storage/bandwidth cost is much higher per file.
+const MAX_REVIEW_VIDEOS = 2;
+
+export class ReviewVideoError extends Error {}
+
+export async function addReviewVideo(
+  reviewId: string,
+  customerId: string,
+  buffer: Buffer,
+  contentType: string
+): Promise<{ id: string; url: string }> {
+  const owns = await pool.query(`SELECT 1 FROM customer_product_review WHERE id = $1 AND customer_id = $2`, [
+    reviewId,
+    customerId,
+  ]);
+  if (owns.rows.length === 0) throw new ReviewVideoError("Review not found.");
+
+  const countRes = await pool.query(`SELECT COUNT(*) AS n FROM customer_review_video WHERE review_id = $1`, [reviewId]);
+  if (Number(countRes.rows[0].n) >= MAX_REVIEW_VIDEOS) {
+    throw new ReviewVideoError(`A review can have up to ${MAX_REVIEW_VIDEOS} videos.`);
+  }
+
+  const blobUrl = await uploadToBlob(`review-videos/${reviewId}-${Date.now()}.mp4`, buffer, contentType);
+  const maxPos = await pool.query(`SELECT COALESCE(MAX(position), -1) AS max FROM customer_review_video WHERE review_id = $1`, [
+    reviewId,
+  ]);
+  const insertRes = await pool.query(
+    `INSERT INTO customer_review_video (review_id, url, position) VALUES ($1, $2, $3) RETURNING id`,
+    [reviewId, blobUrl, Number(maxPos.rows[0].max) + 1]
+  );
+  return { id: String(insertRes.rows[0].id), url: blobUrl };
+}
+
+export async function deleteReviewVideo(videoId: string, customerId: string): Promise<void> {
+  const res = await pool.query(
+    `SELECT v.url FROM customer_review_video v
+     JOIN customer_product_review r ON r.id = v.review_id
+     WHERE v.id = $1 AND r.customer_id = $2`,
+    [videoId, customerId]
+  );
+  const row = res.rows[0];
+  if (!row) throw new ReviewVideoError("Video not found.");
+
+  await deleteFromBlob(row.url).catch(() => {});
+  await pool.query(`DELETE FROM customer_review_video WHERE id = $1`, [videoId]);
 }

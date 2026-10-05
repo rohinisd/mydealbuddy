@@ -45,6 +45,7 @@ export interface ProductReview {
   /** True for a real MyDealBuddy customer who purchased the product; absent for CJ-synced reviews. */
   verified?: boolean;
   photos?: string[];
+  videos?: string[];
 }
 
 export function discountPct(price: number, mrp?: number): number | undefined {

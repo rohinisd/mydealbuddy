@@ -456,6 +456,15 @@ export function ProductDetail({
                   ))}
                 </div>
               )}
+              {review.videos && review.videos.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {review.videos.map((url, i) => (
+                    <video key={i} controls className="h-32 rounded-md border border-border">
+                      <source src={url} type="video/mp4" />
+                    </video>
+                  ))}
+                </div>
+              )}
             </li>
           ))}
         </ul>
