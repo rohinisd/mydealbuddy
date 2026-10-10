@@ -7,6 +7,9 @@ export interface AdminProductRow {
   nameEn: string;
   categoryId: string | null;
   categoryLabel: string | null;
+  categoryL1: string | null;
+  categoryL2: string | null;
+  categoryL3: string | null;
   brand: string | null;
   priceMin: number | null;
   overridePrice: number | null;
@@ -33,6 +36,7 @@ const COST_PRICE_JOIN = `LEFT JOIN LATERAL (
 export async function listAllProductsForAdmin(): Promise<AdminProductRow[]> {
   const res = await pool.query(
     `SELECT p.id, p.pid, p.name_en, p.app_category_id, ${CATEGORY_LABEL_EXPR} AS category_label,
+            ac.l1_name, ac.l2_name, ac.l3_name,
             p.brand, p.price_min, p.override_price, cost.cost_price,
             p.cached_shipping_cost, p.cached_shipping_fetched_at,
             p.main_image_url, p.is_active, p.badges, p.fetched_at
@@ -45,6 +49,9 @@ export async function listAllProductsForAdmin(): Promise<AdminProductRow[]> {
     nameEn: row.name_en,
     categoryId: row.app_category_id ? String(row.app_category_id) : null,
     categoryLabel: row.category_label,
+    categoryL1: row.l1_name,
+    categoryL2: row.l2_name,
+    categoryL3: row.l3_name,
     brand: row.brand,
     priceMin: row.price_min ? Number(row.price_min) : null,
     overridePrice: row.override_price ? Number(row.override_price) : null,

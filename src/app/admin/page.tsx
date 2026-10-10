@@ -226,7 +226,9 @@ export default function AdminPage() {
       target.map((p) => ({
         id: p.id,
         name: p.nameEn,
-        category: p.categoryLabel,
+        categoryL1: p.categoryL1,
+        categoryL2: p.categoryL2,
+        categoryL3: p.categoryL3,
         pid: p.pid,
         cjCost: p.costPrice,
         shippingCost: p.cachedShippingCost,

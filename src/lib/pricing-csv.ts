@@ -6,6 +6,8 @@ export const PRICING_CSV_HEADER = [
   "id",
   "name",
   "category",
+  "subcategory",
+  "specific_category",
   "pid",
   "cj_cost",
   "shipping_cost",
@@ -19,7 +21,9 @@ export const PRICING_CSV_HEADER = [
 export interface PricingCsvSourceRow {
   id: string;
   name: string;
-  category: string | null;
+  categoryL1: string | null;
+  categoryL2: string | null;
+  categoryL3: string | null;
   pid: string;
   cjCost: number | null;
   shippingCost: number | null;
@@ -45,7 +49,9 @@ export function buildPricingCsv(rows: PricingCsvSourceRow[]): string {
       [
         r.id,
         csvEscape(r.name),
-        csvEscape(r.category ?? ""),
+        csvEscape(r.categoryL1 ?? ""),
+        csvEscape(r.categoryL2 ?? ""),
+        csvEscape(r.categoryL3 ?? ""),
         r.pid,
         r.cjCost != null ? r.cjCost.toFixed(2) : "",
         r.shippingCost != null ? r.shippingCost.toFixed(2) : "",
