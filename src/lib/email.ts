@@ -6,7 +6,7 @@ const RESEND_API_BASE = "https://api.resend.com";
 // send AND receive mail (real inboxes); this app only ever sends one-way
 // transactional email, so a plain transactional API is a much cheaper fit
 // (Resend's free tier: 3,000/mo, 100/day vs AgentMail's $20/mo paywall).
-async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+async function sendEmail(to: string, subject: string, html: string, replyTo?: string): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM_EMAIL;
 
@@ -24,7 +24,7 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
   const res = await fetch(`${RESEND_API_BASE}/emails`, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to, subject, html: brandedHtml }),
+    body: JSON.stringify({ from, to, subject, html: brandedHtml, ...(replyTo ? { reply_to: replyTo } : {}) }),
   });
 
   if (!res.ok) {
@@ -96,6 +96,34 @@ export async function sendContactNotificationEmail(input: ContactNotificationInp
      ${input.subject ? `<p><strong>Subject:</strong> ${escapeHtml(input.subject)}</p>` : ""}
      <p><strong>Message:</strong></p>
      <p>${escapeHtml(input.message).replace(/\n/g, "<br>")}</p>`
+  );
+}
+
+export interface ContactReplyInput {
+  to: string;
+  customerName: string;
+  originalSubject: string | null;
+  originalMessage: string;
+  replyMessage: string;
+}
+
+/**
+ * Sent FROM the app TO the customer, not the other way -- Resend here is
+ * send-only (see the note above), so if the customer hits "Reply" on this,
+ * it won't reach the app at all. reply_to points it at the support inbox
+ * instead, so a follow-up at least lands somewhere a human reads, rather
+ * than bouncing or disappearing.
+ */
+export async function sendContactReplyEmail(input: ContactReplyInput): Promise<void> {
+  const supportInbox = process.env.SUPPORT_INBOX_EMAIL || "Help.allinoneonline@gmail.com";
+  await sendEmail(
+    input.to,
+    input.originalSubject ? `Re: ${input.originalSubject}` : "Re: Your message to MyDealBuddy",
+    `<p>Hi ${escapeHtml(input.customerName)},</p>
+     <p>${escapeHtml(input.replyMessage).replace(/\n/g, "<br>")}</p>
+     <hr style="border:none;border-top:1px solid #e5e5e5;margin:20px 0" />
+     <p style="color:#888;font-size:13px"><strong>Your original message:</strong><br>${escapeHtml(input.originalMessage).replace(/\n/g, "<br>")}</p>`,
+    supportInbox
   );
 }
 

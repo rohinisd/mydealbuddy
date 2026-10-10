@@ -28,17 +28,34 @@ export interface ContactMessageRow {
   message: string;
   emailSent: boolean;
   createdAt: string;
+  repliedAt: string | null;
+  replyMessage: string | null;
+}
+
+function rowToContactMessage(r: Record<string, unknown>): ContactMessageRow {
+  return {
+    id: String(r.id),
+    name: r.name as string,
+    email: r.email as string,
+    subject: r.subject as string | null,
+    message: r.message as string,
+    emailSent: r.email_sent as boolean,
+    createdAt: r.created_at as string,
+    repliedAt: (r.replied_at as string | null) ?? null,
+    replyMessage: (r.reply_message as string | null) ?? null,
+  };
 }
 
 export async function listContactMessages(): Promise<ContactMessageRow[]> {
   const res = await pool.query(`SELECT * FROM contact_message ORDER BY created_at DESC`);
-  return res.rows.map((r) => ({
-    id: String(r.id),
-    name: r.name,
-    email: r.email,
-    subject: r.subject,
-    message: r.message,
-    emailSent: r.email_sent,
-    createdAt: r.created_at,
-  }));
+  return res.rows.map(rowToContactMessage);
+}
+
+export async function getContactMessageById(id: string): Promise<ContactMessageRow | null> {
+  const res = await pool.query(`SELECT * FROM contact_message WHERE id = $1`, [id]);
+  return res.rows[0] ? rowToContactMessage(res.rows[0]) : null;
+}
+
+export async function markContactMessageReplied(id: string, replyMessage: string): Promise<void> {
+  await pool.query(`UPDATE contact_message SET replied_at = now(), reply_message = $1 WHERE id = $2`, [replyMessage, id]);
 }
