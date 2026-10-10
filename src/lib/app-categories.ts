@@ -114,3 +114,32 @@ export async function getChildCategories(parentId: string): Promise<CategoryRow[
   const res = await pool.query(`SELECT * FROM app_category WHERE parent_id = $1 ORDER BY name`, [parentId]);
   return res.rows.map(rowToCategory);
 }
+
+/**
+ * One representative product photo per requested category branch, keyed by
+ * that category's id -- used for subcategory/home tile thumbnails instead of
+ * a plain initials circle. `full_slug` encodes the whole path, so matching it
+ * exactly (leaf) or as a prefix (top/group) covers every level with one join.
+ * A branch with nothing active and photographed yet maps to null.
+ */
+export async function getCategoryTileImages(
+  items: { id: string; fullSlug: string }[]
+): Promise<Record<string, string | null>> {
+  if (items.length === 0) return {};
+  const res = await pool.query(
+    `SELECT w.item_id, (
+       SELECT p.main_image_url
+       FROM cj_product p
+       JOIN app_category ac ON ac.id = p.app_category_id
+       WHERE p.is_active = true AND p.main_image_url IS NOT NULL
+         AND (ac.full_slug = w.full_slug OR ac.full_slug LIKE w.full_slug || '/%')
+       ORDER BY p.sold_out ASC, p.listed_count DESC NULLS LAST, p.id
+       LIMIT 1
+     ) AS image_url
+     FROM unnest($1::bigint[], $2::text[]) AS w(item_id, full_slug)`,
+    [items.map((i) => i.id), items.map((i) => i.fullSlug)]
+  );
+  const map: Record<string, string | null> = {};
+  for (const row of res.rows) map[String(row.item_id)] = row.image_url ?? null;
+  return map;
+}

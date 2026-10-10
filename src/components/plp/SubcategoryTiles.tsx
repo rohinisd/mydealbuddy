@@ -12,17 +12,26 @@ function initials(label: string): string {
     .toUpperCase();
 }
 
-export function SubcategoryTiles({ items }: { items: { slug: string; name: string }[] }) {
+export function SubcategoryTiles({ items }: { items: { slug: string; name: string; imageUrl?: string | null }[] }) {
   return (
     <div className="grid grid-cols-3 gap-4 sm:grid-cols-6">
       {items.map((item, i) => (
         <Link key={item.slug} href={`/product-category/${item.slug}`} className="group flex flex-col items-center gap-2 text-center">
-          <span
-            className="flex h-16 w-16 items-center justify-center rounded-full text-lg font-bold text-text-primary transition-transform group-hover:scale-105 sm:h-20 sm:w-20"
-            style={{ backgroundColor: TILE_COLORS[i % TILE_COLORS.length] }}
-          >
-            {initials(item.name)}
-          </span>
+          {item.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- CJ image CDNs aren't whitelisted for next/image, same as ProductCard
+            <img
+              src={item.imageUrl}
+              alt={item.name}
+              className="h-16 w-16 rounded-full object-cover transition-transform group-hover:scale-105 sm:h-20 sm:w-20"
+            />
+          ) : (
+            <span
+              className="flex h-16 w-16 items-center justify-center rounded-full text-lg font-bold text-text-primary transition-transform group-hover:scale-105 sm:h-20 sm:w-20"
+              style={{ backgroundColor: TILE_COLORS[i % TILE_COLORS.length] }}
+            >
+              {initials(item.name)}
+            </span>
+          )}
           <span className="text-xs font-medium text-text-secondary group-hover:text-accent sm:text-sm">{item.name}</span>
         </Link>
       ))}
