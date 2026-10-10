@@ -35,16 +35,24 @@ function csvEscape(value: string): string {
 }
 
 /**
- * Admin fills in exactly one of markup_pct / markup_dollar / final_price per
- * row in Excel/Sheets, then re-uploads via importPricingCsv. markup_pct and
- * markup_dollar are resolved against the product's CURRENT cost at import
- * time (not the cost recorded here) -- that's the point of a markup rule,
- * vs. a fixed final_price which is trusted as typed.
+ * Admin fills in markup_pct, markup_dollar, or types a fixed final_price
+ * directly, then re-uploads via importPricingCsv. final_price carries a live
+ * spreadsheet formula (Excel/Sheets/LibreOffice all evaluate a leading "="
+ * in a CSV cell as a real formula, same as in a native .xlsx) that previews
+ * the markup-derived price as soon as markup_pct or markup_dollar is typed,
+ * so the admin can sanity-check it before importing. On import, a filled
+ * markup_pct/markup_dollar always wins over whatever final_price shows --
+ * it's recomputed against the product's CURRENT cost at that moment (not the
+ * cost recorded here), which is the point of a markup rule vs. a fixed
+ * price. To set a fixed price instead, leave both markup columns blank and
+ * type directly into final_price (overwriting its formula).
  */
 export function buildPricingCsv(rows: PricingCsvSourceRow[]): string {
   const lines = [PRICING_CSV_HEADER.join(",")];
-  for (const r of rows) {
+  rows.forEach((r, i) => {
+    const rowNum = i + 2; // header is row 1
     const totalCost = r.cjCost != null && r.shippingCost != null ? r.cjCost + r.shippingCost : null;
+    const finalPriceFormula = `=IF(AND(K${rowNum}<>"",I${rowNum}<>""),I${rowNum}*(1+K${rowNum}/100),IF(AND(L${rowNum}<>"",I${rowNum}<>""),I${rowNum}+L${rowNum},""))`;
     lines.push(
       [
         r.id,
@@ -59,10 +67,10 @@ export function buildPricingCsv(rows: PricingCsvSourceRow[]): string {
         r.priceMin != null ? r.priceMin.toFixed(2) : "",
         "",
         "",
-        "",
+        csvEscape(finalPriceFormula),
       ].join(",")
     );
-  }
+  });
   return lines.join("\n");
 }
 
@@ -177,14 +185,9 @@ export function parsePricingCsv(text: string): ParsedPricingCsv {
     const finalPriceRaw = (cols[finalPriceIdx] ?? "").trim();
     const pctRaw = markupPctIdx === -1 ? "" : (cols[markupPctIdx] ?? "").trim();
     const dollarRaw = markupDollarIdx === -1 ? "" : (cols[markupDollarIdx] ?? "").trim();
-    const filledCount = [finalPriceRaw, pctRaw, dollarRaw].filter((v) => v !== "").length;
 
-    if (filledCount === 0) {
-      skippedBlank.push({ rowNum, id });
-      continue;
-    }
-    if (filledCount > 1) {
-      errors.push({ rowNum, id, error: "Fill only one of final_price, markup_pct, or markup_dollar per row -- this row has more than one filled." });
+    if (pctRaw !== "" && dollarRaw !== "") {
+      errors.push({ rowNum, id, error: "Fill only one of markup_pct or markup_dollar per row -- this row has both filled." });
       continue;
     }
 
@@ -193,27 +196,45 @@ export function parsePricingCsv(text: string): ParsedPricingCsv {
 
     let mode: PricingMode;
     let value: number;
-    if (finalPriceRaw !== "") {
-      mode = "fixed";
-      value = Number(finalPriceRaw);
-      if (!Number.isFinite(value) || value <= 0) {
-        errors.push({ rowNum, id, error: `final_price "${finalPriceRaw}" must be a number greater than 0.` });
-        continue;
-      }
-    } else if (pctRaw !== "") {
+    // A markup column always wins over final_price: final_price carries a
+    // live formula previewing the markup result, so once markup_pct/_dollar
+    // is filled, final_price is just that formula's (possibly stale-by-now)
+    // output, not a separate decision -- the real price gets recomputed
+    // fresh against current cost below, in the import route. Only an admin
+    // who left both markup columns blank and typed straight into
+    // final_price (replacing its formula) is making a fixed-price call.
+    if (pctRaw !== "") {
       mode = "pct";
       value = Number(pctRaw);
       if (!Number.isFinite(value)) {
         errors.push({ rowNum, id, error: `markup_pct "${pctRaw}" must be a number.` });
         continue;
       }
-    } else {
+    } else if (dollarRaw !== "") {
       mode = "dollar";
       value = Number(dollarRaw);
       if (!Number.isFinite(value)) {
         errors.push({ rowNum, id, error: `markup_dollar "${dollarRaw}" must be a number.` });
         continue;
       }
+    } else if (finalPriceRaw !== "") {
+      mode = "fixed";
+      if (finalPriceRaw.startsWith("=")) {
+        errors.push({
+          rowNum,
+          id,
+          error: "final_price still contains the preview formula, unevaluated -- open the file in Excel/Sheets and save it again before importing.",
+        });
+        continue;
+      }
+      value = Number(finalPriceRaw);
+      if (!Number.isFinite(value) || value <= 0) {
+        errors.push({ rowNum, id, error: `final_price "${finalPriceRaw}" must be a number greater than 0.` });
+        continue;
+      }
+    } else {
+      skippedBlank.push({ rowNum, id });
+      continue;
     }
 
     rows.push({ rowNum, id, mode, value, csvCjCost, csvShippingCost });
