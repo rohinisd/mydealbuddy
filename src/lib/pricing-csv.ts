@@ -11,6 +11,8 @@ export const PRICING_CSV_HEADER = [
   "shipping_cost",
   "total_cost",
   "cj_suggested_price",
+  "markup_pct",
+  "markup_dollar",
   "final_price",
 ] as const;
 
@@ -28,7 +30,13 @@ function csvEscape(value: string): string {
   return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
-/** Admin fills in the blank final_price column in Excel/Sheets, then re-uploads via importPricingCsv. */
+/**
+ * Admin fills in exactly one of markup_pct / markup_dollar / final_price per
+ * row in Excel/Sheets, then re-uploads via importPricingCsv. markup_pct and
+ * markup_dollar are resolved against the product's CURRENT cost at import
+ * time (not the cost recorded here) -- that's the point of a markup rule,
+ * vs. a fixed final_price which is trusted as typed.
+ */
 export function buildPricingCsv(rows: PricingCsvSourceRow[]): string {
   const lines = [PRICING_CSV_HEADER.join(",")];
   for (const r of rows) {
@@ -43,6 +51,8 @@ export function buildPricingCsv(rows: PricingCsvSourceRow[]): string {
         r.shippingCost != null ? r.shippingCost.toFixed(2) : "",
         totalCost != null ? totalCost.toFixed(2) : "",
         r.priceMin != null ? r.priceMin.toFixed(2) : "",
+        "",
+        "",
         "",
       ].join(",")
     );
@@ -97,8 +107,20 @@ export interface PricingCsvRowResult {
   error?: string;
 }
 
+export type PricingMode = "fixed" | "pct" | "dollar";
+
+export interface ParsedPricingRow {
+  rowNum: number;
+  id: string;
+  mode: PricingMode;
+  /** The typed final_price (mode "fixed"), or the markup amount (mode "pct"/"dollar" -- a percent or a dollar amount, not a price). */
+  value: number;
+  csvCjCost: number | null;
+  csvShippingCost: number | null;
+}
+
 export interface ParsedPricingCsv {
-  priced: { id: string; price: number; csvCjCost: number | null; csvShippingCost: number | null }[];
+  rows: ParsedPricingRow[];
   skippedBlank: PricingCsvRowResult[];
   errors: PricingCsvRowResult[];
 }
@@ -108,54 +130,88 @@ function parseOptionalMoney(raw: string): number | null {
   return trimmed === "" ? null : Number(trimmed);
 }
 
-/** Parses what buildPricingCsv produced after an admin edited the final_price column. */
+/** Parses what buildPricingCsv produced after an admin edited one pricing column. */
 export function parsePricingCsv(text: string): ParsedPricingCsv {
-  const rows = parseCsvRows(text);
-  const priced: ParsedPricingCsv["priced"] = [];
+  const csvRows = parseCsvRows(text);
+  const rows: ParsedPricingRow[] = [];
   const skippedBlank: PricingCsvRowResult[] = [];
   const errors: PricingCsvRowResult[] = [];
 
-  if (rows.length === 0) {
+  if (csvRows.length === 0) {
     errors.push({ rowNum: 1, id: null, error: "File is empty." });
-    return { priced, skippedBlank, errors };
+    return { rows, skippedBlank, errors };
   }
 
-  const header = rows[0].map((h) => h.trim().toLowerCase());
+  const header = csvRows[0].map((h) => h.trim().toLowerCase());
   const idIdx = header.indexOf("id");
   const finalPriceIdx = header.indexOf("final_price");
   const cjCostIdx = header.indexOf("cj_cost");
   const shippingIdx = header.indexOf("shipping_cost");
+  const markupPctIdx = header.indexOf("markup_pct");
+  const markupDollarIdx = header.indexOf("markup_dollar");
   if (idIdx === -1 || finalPriceIdx === -1) {
-    errors.push({ rowNum: 1, id: null, error: `Missing required column(s): ${idIdx === -1 ? "id" : ""} ${finalPriceIdx === -1 ? "final_price" : ""}`.trim() });
-    return { priced, skippedBlank, errors };
+    errors.push({
+      rowNum: 1,
+      id: null,
+      error: `Missing required column(s): ${idIdx === -1 ? "id " : ""}${finalPriceIdx === -1 ? "final_price" : ""}`.trim(),
+    });
+    return { rows, skippedBlank, errors };
   }
 
-  for (let i = 1; i < rows.length; i++) {
+  for (let i = 1; i < csvRows.length; i++) {
     const rowNum = i + 1;
-    const cols = rows[i];
+    const cols = csvRows[i];
     const id = (cols[idIdx] ?? "").trim();
-    const finalPriceRaw = (cols[finalPriceIdx] ?? "").trim();
 
     if (!id || !/^\d+$/.test(id)) {
-      errors.push({ rowNum, id: id || null, error: `Invalid id "${id}" -- don't add or reorder rows, only edit final_price.` });
+      errors.push({ rowNum, id: id || null, error: `Invalid id "${id}" -- don't add or reorder rows, only edit the pricing columns.` });
       continue;
     }
-    if (finalPriceRaw === "") {
+
+    const finalPriceRaw = (cols[finalPriceIdx] ?? "").trim();
+    const pctRaw = markupPctIdx === -1 ? "" : (cols[markupPctIdx] ?? "").trim();
+    const dollarRaw = markupDollarIdx === -1 ? "" : (cols[markupDollarIdx] ?? "").trim();
+    const filledCount = [finalPriceRaw, pctRaw, dollarRaw].filter((v) => v !== "").length;
+
+    if (filledCount === 0) {
       skippedBlank.push({ rowNum, id });
       continue;
     }
-    const price = Number(finalPriceRaw);
-    if (!Number.isFinite(price) || price <= 0) {
-      errors.push({ rowNum, id, error: `final_price "${finalPriceRaw}" must be a number greater than 0.` });
+    if (filledCount > 1) {
+      errors.push({ rowNum, id, error: "Fill only one of final_price, markup_pct, or markup_dollar per row -- this row has more than one filled." });
       continue;
     }
-    priced.push({
-      id,
-      price,
-      csvCjCost: cjCostIdx === -1 ? null : parseOptionalMoney(cols[cjCostIdx] ?? ""),
-      csvShippingCost: shippingIdx === -1 ? null : parseOptionalMoney(cols[shippingIdx] ?? ""),
-    });
+
+    const csvCjCost = cjCostIdx === -1 ? null : parseOptionalMoney(cols[cjCostIdx] ?? "");
+    const csvShippingCost = shippingIdx === -1 ? null : parseOptionalMoney(cols[shippingIdx] ?? "");
+
+    let mode: PricingMode;
+    let value: number;
+    if (finalPriceRaw !== "") {
+      mode = "fixed";
+      value = Number(finalPriceRaw);
+      if (!Number.isFinite(value) || value <= 0) {
+        errors.push({ rowNum, id, error: `final_price "${finalPriceRaw}" must be a number greater than 0.` });
+        continue;
+      }
+    } else if (pctRaw !== "") {
+      mode = "pct";
+      value = Number(pctRaw);
+      if (!Number.isFinite(value)) {
+        errors.push({ rowNum, id, error: `markup_pct "${pctRaw}" must be a number.` });
+        continue;
+      }
+    } else {
+      mode = "dollar";
+      value = Number(dollarRaw);
+      if (!Number.isFinite(value)) {
+        errors.push({ rowNum, id, error: `markup_dollar "${dollarRaw}" must be a number.` });
+        continue;
+      }
+    }
+
+    rows.push({ rowNum, id, mode, value, csvCjCost, csvShippingCost });
   }
 
-  return { priced, skippedBlank, errors };
+  return { rows, skippedBlank, errors };
 }

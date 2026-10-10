@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CategoryPicker } from "@/components/admin/CategoryPicker";
+import { CategoryFilter } from "@/components/admin/CategoryFilter";
 import type { AdminProductRow } from "@/lib/admin-products";
 import { buildPricingCsv } from "@/lib/pricing-csv";
 import type { ImportPricingCsvResult } from "@/app/api/admin/products/import-pricing-csv/route";
@@ -34,6 +35,7 @@ export default function AdminPage() {
   const [importingCsv, setImportingCsv] = useState(false);
   const [importResult, setImportResult] = useState<ImportPricingCsvResult | null>(null);
   const csvFileInputRef = useRef<HTMLInputElement>(null);
+  const [categoryLeafFilter, setCategoryLeafFilter] = useState<Set<string> | null>(null);
 
   async function loadProducts() {
     setLoading(true);
@@ -219,7 +221,7 @@ export default function AdminPage() {
   // already fetched every product's cost/shipping/suggested price, so there's
   // no reason to round-trip the server just to export what's sitting in memory.
   function handleExportCsv() {
-    const target = products.filter((p) => p.overridePrice == null);
+    const target = visibleProducts.filter((p) => p.overridePrice == null);
     const csv = buildPricingCsv(
       target.map((p) => ({
         id: p.id,
@@ -293,8 +295,9 @@ export default function AdminPage() {
     }
   }
 
-  const visibleProducts = needsPriceOnly ? products.filter((p) => p.overridePrice == null) : products;
-  const needsPriceCount = products.filter((p) => p.overridePrice == null).length;
+  const categoryFilteredProducts = categoryLeafFilter ? products.filter((p) => p.categoryId != null && categoryLeafFilter.has(p.categoryId)) : products;
+  const visibleProducts = needsPriceOnly ? categoryFilteredProducts.filter((p) => p.overridePrice == null) : categoryFilteredProducts;
+  const needsPriceCount = categoryFilteredProducts.filter((p) => p.overridePrice == null).length;
 
   return (
     <div className="mx-auto max-w-[1000px] px-4 py-8">
@@ -375,7 +378,8 @@ export default function AdminPage() {
       {(products.length > 0 || message) && (
         <div className="mb-3 flex items-center justify-between">
           {products.length > 0 ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <CategoryFilter onChange={setCategoryLeafFilter} />
               <button
                 type="button"
                 onClick={() => setNeedsPriceOnly((v) => !v)}
