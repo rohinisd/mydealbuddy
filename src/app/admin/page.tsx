@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CategoryPicker } from "@/components/admin/CategoryPicker";
 import type { AdminProductRow } from "@/lib/admin-products";
+import { buildPricingCsv } from "@/lib/pricing-csv";
+import type { ImportPricingCsvResult } from "@/app/api/admin/products/import-pricing-csv/route";
 
 interface BulkAddResult {
   input: string;
@@ -29,6 +31,9 @@ export default function AdminPage() {
   const [fetchingShippingId, setFetchingShippingId] = useState<string | null>(null);
   const [bulkShippingFetching, setBulkShippingFetching] = useState(false);
   const [bulkShippingProgress, setBulkShippingProgress] = useState<{ done: number; total: number } | null>(null);
+  const [importingCsv, setImportingCsv] = useState(false);
+  const [importResult, setImportResult] = useState<ImportPricingCsvResult | null>(null);
+  const csvFileInputRef = useRef<HTMLInputElement>(null);
 
   async function loadProducts() {
     setLoading(true);
@@ -210,6 +215,60 @@ export default function AdminPage() {
     await loadProducts();
   }
 
+  // Builds the CSV straight from already-loaded state -- the admin page
+  // already fetched every product's cost/shipping/suggested price, so there's
+  // no reason to round-trip the server just to export what's sitting in memory.
+  function handleExportCsv() {
+    const target = products.filter((p) => p.overridePrice == null);
+    const csv = buildPricingCsv(
+      target.map((p) => ({
+        id: p.id,
+        name: p.nameEn,
+        category: p.categoryLabel,
+        pid: p.pid,
+        cjCost: p.costPrice,
+        shippingCost: p.cachedShippingCost,
+        priceMin: p.priceMin,
+      }))
+    );
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mydealbuddy-needs-final-price-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImportCsv(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same filename after a fix
+    if (!file) return;
+
+    setImportingCsv(true);
+    setImportResult(null);
+    setMessage(null);
+    try {
+      const text = await file.text();
+      const res = await fetch("/api/admin/products/import-pricing-csv", {
+        method: "POST",
+        headers: { "Content-Type": "text/csv" },
+        body: text,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.error || "Failed to import CSV.");
+        return;
+      }
+      setImportResult(data);
+      await loadProducts();
+    } catch {
+      setMessage("Failed to import CSV -- network error.");
+    } finally {
+      setImportingCsv(false);
+    }
+  }
+
   async function handleLogout() {
     await fetch("/api/admin/logout", { method: "POST" });
     router.push("/admin/login");
@@ -338,11 +397,62 @@ export default function AdminPage() {
                     : "Fetch All Shipping Costs"}
                 </button>
               )}
+              {needsPriceOnly && needsPriceCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleExportCsv}
+                  className="rounded-md border border-border-strong px-3 py-1.5 text-xs font-semibold text-text-primary hover:border-accent"
+                >
+                  Export CSV
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={importingCsv}
+                onClick={() => csvFileInputRef.current?.click()}
+                className="rounded-md border border-border-strong px-3 py-1.5 text-xs font-semibold text-text-primary hover:border-accent disabled:opacity-60"
+              >
+                {importingCsv ? "Importing…" : "Import Priced CSV"}
+              </button>
+              <input ref={csvFileInputRef} type="file" accept=".csv,text/csv" onChange={handleImportCsv} className="hidden" />
             </div>
           ) : (
             <div />
           )}
           {message && <p className="text-sm text-discount">{message}</p>}
+        </div>
+      )}
+
+      {importResult && (
+        <div className="mb-4 rounded-md border border-border bg-surface-grey p-3 text-sm">
+          <div className="mb-1.5 flex items-center justify-between">
+            <p className="font-semibold text-text-primary">
+              CSV import: {importResult.applied.length} price{importResult.applied.length === 1 ? "" : "s"} applied
+              {importResult.skippedBlankCount > 0 ? `, ${importResult.skippedBlankCount} left blank (skipped)` : ""}
+              {importResult.errors.length > 0 ? `, ${importResult.errors.length} failed` : ""}
+            </p>
+            <button type="button" onClick={() => setImportResult(null)} className="text-xs text-text-muted hover:text-accent">
+              Dismiss
+            </button>
+          </div>
+          {importResult.warnings.length > 0 && (
+            <ul className="mb-1.5 space-y-0.5">
+              {importResult.warnings.map((w, i) => (
+                <li key={i} className="text-xs text-discount">
+                  ⚠ {w.name}: {w.message}
+                </li>
+              ))}
+            </ul>
+          )}
+          {importResult.errors.length > 0 && (
+            <ul className="space-y-0.5">
+              {importResult.errors.map((err, i) => (
+                <li key={i} className="text-xs text-discount">
+                  ✗ Row {err.rowNum > 0 ? err.rowNum : "?"}{err.id ? ` (id ${err.id})` : ""}: {err.message}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 

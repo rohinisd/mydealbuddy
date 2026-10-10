@@ -137,6 +137,24 @@ export async function setProductOverridePrice(id: string, price: number | null):
   await pool.query(`UPDATE cj_product SET override_price = $1 WHERE id = $2`, [price, id]);
 }
 
+/** Applies a batch of final-price decisions (e.g. from the CSV bulk-pricing import) as one transaction -- all rows land or none do. */
+export async function bulkSetOverridePrices(updates: { id: string; price: number }[]): Promise<void> {
+  if (updates.length === 0) return;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const { id, price } of updates) {
+      await client.query(`UPDATE cj_product SET override_price = $1 WHERE id = $2`, [price, id]);
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export class ProductHasOrdersError extends Error {}
 
 /**

@@ -3,6 +3,13 @@ import { pool } from "@/lib/db";
 
 const CJ_API_BASE = process.env.CJ_API_BASE || "https://developers.cjdropshipping.com/api2.0/v1";
 
+// Reference address for the admin pricing tool only -- NJ, matching where
+// the business has tax nexus (see src/lib/tax.ts). Real customer orders
+// always quote to the actual shipping address; this is purely a stand-in
+// so admins have a representative US shipping cost while setting a price.
+export const ADMIN_REFERENCE_ZIP = "07302";
+export const ADMIN_REFERENCE_COUNTRY = "US";
+
 export interface ShippingOption {
   method: string;
   cost: number;
