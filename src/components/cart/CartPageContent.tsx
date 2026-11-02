@@ -6,7 +6,7 @@ import { Breadcrumb } from "@/components/plp/Breadcrumb";
 import { CoinIcon } from "@/components/icons/Icons";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
-import { useCoupon } from "@/context/CouponContext";
+import { useCoupon, useCouponRevalidation } from "@/context/CouponContext";
 import { useSavedForLater } from "@/context/SavedForLaterContext";
 import { useProductsByIds } from "@/hooks/useProductsByIds";
 
@@ -56,6 +56,13 @@ export function CartPageContent() {
     removeSaved(productId, option);
   }
 
+  // Computed before the loading early-return (and the revalidation hook
+  // called unconditionally alongside it) so Rules of Hooks holds -- `ready:
+  // !loading` keeps it from revalidating against a transient subtotal of 0
+  // while products are still being fetched.
+  const subtotal = resolved.reduce((sum, r) => sum + r.product.price * r.line.quantity, 0);
+  const couponInvalidReason = useCouponRevalidation(subtotal, !loading);
+
   if (loading) {
     return (
       <div className="mx-auto max-w-[1280px] px-4 py-6">
@@ -65,7 +72,6 @@ export function CartPageContent() {
     );
   }
 
-  const subtotal = resolved.reduce((sum, r) => sum + r.product.price * r.line.quantity, 0);
   const mrpTotal = resolved.reduce((sum, r) => sum + (r.product.mrp ?? r.product.price) * r.line.quantity, 0);
   const savings = mrpTotal - subtotal;
   const buddyCoinsTotal = resolved.reduce((sum, r) => sum + (r.product.buddyCoins ?? 0) * r.line.quantity, 0);
@@ -259,6 +265,9 @@ export function CartPageContent() {
                   </form>
                 )}
                 {couponMessage && <p className="mt-2 text-xs text-text-secondary">{couponMessage}</p>}
+                {!couponMessage && couponInvalidReason && (
+                  <p className="mt-2 text-xs text-discount">Your coupon was removed: {couponInvalidReason}</p>
+                )}
 
                 {!applied && availableCoupons.length > 0 && (
                   <div className="mt-3 space-y-1.5">
@@ -315,7 +324,10 @@ export function CartPageContent() {
       {resolvedSaved.length > 0 && (
         <div className="mt-10">
           <h2 className="mb-4 text-lg font-semibold text-text-primary">
-            Saved for Later <span className="text-sm font-normal text-text-muted">({resolvedSaved.length} items)</span>
+            Saved for Later{" "}
+            <span className="text-sm font-normal text-text-muted">
+              ({resolvedSaved.length} item{resolvedSaved.length === 1 ? "" : "s"})
+            </span>
           </h2>
           <div className="divide-y divide-border rounded-md border border-border lg:max-w-[calc(66.666%-1rem)]">
             {resolvedSaved.map(({ line, product }) => (

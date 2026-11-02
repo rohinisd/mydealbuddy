@@ -125,7 +125,7 @@ export default function AdminCustomerOrdersPage() {
                 </div>
               </div>
               <p className="text-xs text-text-muted">
-                {o.lines.map((l) => `${l.productName} × ${l.quantity}`).join(", ")}
+                {o.lines.map((l) => `${l.productName}${l.optionLabel ? ` (${l.optionLabel})` : ""} × ${l.quantity}`).join(", ")}
               </p>
 
               {o.cjFulfillment.length > 0 && (

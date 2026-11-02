@@ -7,7 +7,7 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { Breadcrumb } from "@/components/plp/Breadcrumb";
 import { useCart } from "@/context/CartContext";
-import { useCoupon } from "@/context/CouponContext";
+import { useCoupon, useCouponRevalidation } from "@/context/CouponContext";
 import { useProductsByIds } from "@/hooks/useProductsByIds";
 import { SHIPPING_COUNTRIES } from "@/data/countries";
 import { isValidPostalCode } from "@/lib/postal-codes";
@@ -182,10 +182,22 @@ export function CheckoutPageContent({
 
   useEffect(() => {
     const trimmedZip = zip.trim();
-    if (!countryCode || !trimmedZip || lines.length === 0 || !isValidPostalCode(countryCode, trimmedZip)) {
+    // Not ready yet (nothing typed, or no items) -- stay silent, this isn't
+    // an error the customer needs telling about.
+    if (!countryCode || !trimmedZip || lines.length === 0) {
       setShippingCost(null);
       setEstimatedDays(null);
       setShippingError(null);
+      setTaxAmount(0);
+      return;
+    }
+    // Something IS typed, but it's not a real postal code format -- this was
+    // previously lumped in with the "not ready yet" case above and silently
+    // cleared the error, leaving checkout stuck with zero explanation.
+    if (!isValidPostalCode(countryCode, trimmedZip)) {
+      setShippingCost(null);
+      setEstimatedDays(null);
+      setShippingError("That doesn't look like a valid postal/ZIP code for the selected country.");
       setTaxAmount(0);
       return;
     }
@@ -249,6 +261,7 @@ export function CheckoutPageContent({
     .map((line) => ({ line, product: productById.get(line.productId) }))
     .filter((r): r is { line: typeof lines[number]; product: NonNullable<typeof r.product> } => !!r.product);
   const subtotal = resolved.reduce((sum, r) => sum + r.product.price * r.line.quantity, 0);
+  const couponInvalidReason = useCouponRevalidation(subtotal, !loading);
   const couponDiscount = applied?.discountAmount ?? 0;
   const maxRedeemableValue = Math.max(0, subtotal - couponDiscount);
   const maxRedeemableCoins = Math.min(coinBalance, Math.floor(maxRedeemableValue / COIN_REDEMPTION_RATE));
@@ -614,7 +627,8 @@ export function CheckoutPageContent({
               {resolved.map(({ line, product }) => (
                 <li key={`${line.productId}-${line.option ?? ""}`} className="flex justify-between">
                   <span className="truncate pr-2">
-                    {product.name} × {line.quantity}
+                    {product.name}
+                    {line.option ? ` (${line.option})` : ""} × {line.quantity}
                   </span>
                   <span className="shrink-0 font-medium text-text-primary">${(product.price * line.quantity).toFixed(2)}</span>
                 </li>
@@ -644,6 +658,9 @@ export function CheckoutPageContent({
                 <span>Coupon ({applied?.code})</span>
                 <span>− ${couponDiscount.toFixed(2)}</span>
               </div>
+            )}
+            {couponInvalidReason && (
+              <p className="mt-2 text-xs text-discount">Your coupon was removed: {couponInvalidReason}</p>
             )}
 
             {!isGuest && coinBalance > 0 && (

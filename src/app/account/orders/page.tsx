@@ -50,7 +50,8 @@ export default async function OrdersPage() {
                 {order.lines.map((line, i) => (
                   <li key={i} className="flex justify-between">
                     <span className="truncate pr-2">
-                      {line.productName} × {line.quantity}
+                      {line.productName}
+                      {line.optionLabel ? ` (${line.optionLabel})` : ""} × {line.quantity}
                     </span>
                     <span className="shrink-0 font-medium text-text-primary">${(line.unitPrice * line.quantity).toFixed(2)}</span>
                   </li>

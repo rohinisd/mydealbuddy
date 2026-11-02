@@ -52,3 +52,57 @@ export function useCoupon() {
   if (!ctx) throw new Error("useCoupon must be used within a CouponProvider");
   return ctx;
 }
+
+/**
+ * Keeps an applied coupon honest against the CURRENT cart. Without this, an
+ * applied coupon is just replayed from localStorage forever -- it never
+ * notices the admin deactivated it, that the cart has dropped below its
+ * minimum order, or that the subtotal (and therefore a percent discount)
+ * has changed since it was computed. Re-validates whenever the applied
+ * code or the subtotal changes, and on first mount once the caller's own
+ * data is ready (`ready` lets a page hold off during its product-loading
+ * state, so a transient subtotal of 0 doesn't wrongly clear a genuinely
+ * valid coupon). Returns the rejection reason the moment a coupon stops
+ * being valid, so the page can tell the customer why it disappeared instead
+ * of silently zeroing the discount.
+ */
+export function useCouponRevalidation(subtotal: number, ready: boolean): string | null {
+  const { applied, setApplied } = useCoupon();
+  const code = applied?.code ?? null;
+  const [invalidReason, setInvalidReason] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!ready || !code) {
+      setInvalidReason(null);
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/coupons/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, subtotal }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (data.valid) {
+          setInvalidReason(null);
+          setApplied({ code, discountAmount: data.discountAmount });
+        } else {
+          setInvalidReason(data.reason || "This coupon is no longer valid.");
+          setApplied(null);
+        }
+      })
+      .catch(() => {
+        // A network hiccup shouldn't silently drop a coupon that was valid a
+        // moment ago -- leave existing state as-is, the next cart change (or
+        // the final server-side check at order placement) will retry/catch it.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setApplied is a stable function identity from the provider's useMemo
+  }, [ready, code, subtotal]);
+
+  return invalidReason;
+}

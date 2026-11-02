@@ -142,6 +142,40 @@ async function getGallery(productId: string): Promise<string[]> {
   return res.rows.map((r) => r.url as string);
 }
 
+// CJ's own variantProperty is always "[]" for this catalog -- it never tells
+// us which part of "Dark Green-S" is the color vs. the size, so this is a
+// heuristic: if the segment after the LAST hyphen looks like a size token,
+// show it as "Dark Green / S" instead of the raw key. Anything that doesn't
+// match (a single-axis variant like "64GB", or a color with no size) is left
+// as-is rather than guessed at wrong.
+const SIZE_TOKEN_RE = /^(XXXS|XXS|XS|S|M|L|XL|XXL|XXXL|[2-6]XL|ONE\s?SIZE|OS|\d{1,3}(\.\d+)?\s?(CM|IN|MM)?|US\s?\d+(\.\d+)?|EU\s?\d+|UK\s?\d+)$/i;
+
+function formatVariantOption(rawKey: string): string {
+  const lastDash = rawKey.lastIndexOf("-");
+  if (lastDash <= 0) return rawKey;
+  const tail = rawKey.slice(lastDash + 1).trim();
+  if (!SIZE_TOKEN_RE.test(tail)) return rawKey;
+  return `${rawKey.slice(0, lastDash).trim()} / ${tail}`;
+}
+
+/**
+ * Each cj_variant row is one real, individually-priced/stocked CJ SKU for a
+ * specific color+size (or whatever axis the supplier used) combination --
+ * variant_key_raw is exactly that combination, in CJ's original order. Used
+ * to populate Product.options so the PDP's existing variant selector (which
+ * already requires a choice before Add to Cart) has something to select.
+ */
+async function getVariantOptions(productId: string): Promise<string[]> {
+  const res = await pool.query(
+    `SELECT variant_key_raw FROM cj_variant WHERE product_id = $1 AND variant_key_raw IS NOT NULL ORDER BY id`,
+    [productId]
+  );
+  // A single SKU isn't a "choice" -- only surface the selector (and require
+  // using it) when there's actually more than one real option to pick between.
+  if (res.rows.length <= 1) return [];
+  return res.rows.map((r) => formatVariantOption(r.variant_key_raw as string));
+}
+
 export async function getProductBySlug(slug: string): Promise<Product | undefined> {
   // Slug is derived, not stored, so fetch everything and match in memory --
   // fine at this catalog size; revisit with a stored/indexed slug column once
@@ -149,15 +183,19 @@ export async function getProductBySlug(slug: string): Promise<Product | undefine
   const products = await getAllProducts();
   const match = products.find((p) => p.slug === slug);
   if (!match) return undefined;
-  match.images = await getGallery(match.id);
+  const [images, options] = await Promise.all([getGallery(match.id), getVariantOptions(match.id)]);
+  match.images = images;
+  if (options.length > 0) match.options = options;
   return match;
 }
 
 export async function getProductById(id: string): Promise<Product | undefined> {
   const res = await pool.query(`${BASE_QUERY} AND p.id = $1`, [id]);
   if (!res.rows[0]) return undefined;
-  const gallery = await getGallery(id);
-  return rowToProduct(res.rows[0], res.rows[0].main_image_url, gallery);
+  const [gallery, options] = await Promise.all([getGallery(id), getVariantOptions(id)]);
+  const product = rowToProduct(res.rows[0], res.rows[0].main_image_url, gallery);
+  if (options.length > 0) product.options = options;
+  return product;
 }
 
 export async function searchProducts(query: string, limit = 20): Promise<Product[]> {
@@ -173,8 +211,11 @@ export async function searchProducts(query: string, limit = 20): Promise<Product
 export async function getProductBySku(sku: string): Promise<Product | undefined> {
   const res = await pool.query(`${BASE_QUERY} AND p.spu ILIKE $1`, [sku]);
   if (!res.rows[0]) return undefined;
-  const gallery = await getGallery(res.rows[0].id);
-  return rowToProduct(res.rows[0], res.rows[0].main_image_url, gallery);
+  const id = res.rows[0].id;
+  const [gallery, options] = await Promise.all([getGallery(id), getVariantOptions(id)]);
+  const product = rowToProduct(res.rows[0], res.rows[0].main_image_url, gallery);
+  if (options.length > 0) product.options = options;
+  return product;
 }
 
 export async function getProductsByIds(ids: string[]): Promise<Product[]> {

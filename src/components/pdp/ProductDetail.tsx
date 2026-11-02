@@ -80,7 +80,13 @@ export function ProductDetail({
 }) {
   const { addItem } = useCart();
   const { has, toggle } = useWishlist();
-  const [selectedOption, setSelectedOption] = useState(product.options?.[0]);
+  // No default selection -- when a product has real size/color variants,
+  // silently pre-picking the first one would let a customer add to cart
+  // without ever choosing, which is exactly what MDB-001/002 flagged as
+  // the actual bug (CJ can't fulfill an order with no variant chosen).
+  const [selectedOption, setSelectedOption] = useState<string | undefined>(undefined);
+  const hasOptions = Boolean(product.options && product.options.length > 0);
+  const needsOptionSelection = hasOptions && !selectedOption;
   const [quantity, setQuantity] = useState(1);
   const [zip, setZip] = useState("");
   const [country, setCountry] = useState("US");
@@ -100,6 +106,7 @@ export function ProductDetail({
   const hasRealImages = Boolean(product.images && product.images.length > 0);
 
   function handleAddToCart() {
+    if (needsOptionSelection) return;
     addItem(product.id, selectedOption, quantity);
     setJustAdded(true);
     window.setTimeout(() => setJustAdded(false), 2000);
@@ -177,11 +184,13 @@ export function ProductDetail({
             <p className="mt-1 text-xs font-medium text-price-note">inclusive of all taxes</p>
           </div>
 
-          {product.options && product.options.length > 0 && (
+          {hasOptions && (
             <div className="mt-5">
-              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-text-muted">Select Option</p>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-text-muted">
+                Select Option <span className="text-discount">*</span>
+              </p>
               <div className="flex flex-wrap gap-2">
-                {product.options.map((opt) => (
+                {product.options!.map((opt) => (
                   <button
                     key={opt}
                     type="button"
@@ -196,6 +205,7 @@ export function ProductDetail({
                   </button>
                 ))}
               </div>
+              {needsOptionSelection && <p className="mt-1.5 text-xs text-discount">Please select an option before adding to cart.</p>}
             </div>
           )}
 
@@ -226,7 +236,7 @@ export function ProductDetail({
             <button
               type="button"
               onClick={handleAddToCart}
-              disabled={product.inStock === false}
+              disabled={product.inStock === false || needsOptionSelection}
               className="btn-tracking flex-1 rounded-md bg-accent py-3 text-sm font-bold uppercase text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {justAdded ? "Added to Bag ✓" : "Add to Cart"}

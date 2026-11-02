@@ -15,6 +15,9 @@ export async function POST(request: NextRequest) {
   if (!code || !discountType || !Number.isFinite(discountValue) || discountValue <= 0) {
     return NextResponse.json({ error: "code, discountType, and a positive discountValue are required" }, { status: 400 });
   }
+  if (discountType === "percent" && discountValue > 100) {
+    return NextResponse.json({ error: "A percentage discount can't exceed 100%." }, { status: 400 });
+  }
 
   try {
     const coupon = await createCoupon({

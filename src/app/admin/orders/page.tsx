@@ -43,6 +43,11 @@ export default function AdminOrdersPage() {
 
   async function loadShippingOptions() {
     if (!productDbId || !zip) return;
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      setMessage("Quantity must be at least 1.");
+      return;
+    }
+    setMessage(null);
     setLoadingShipping(true);
     setShippingOptions([]);
     setLogisticName("");
@@ -210,7 +215,10 @@ export default function AdminOrdersPage() {
         {shippingOptions.length > 0 && (
           <select
             value={logisticName}
-            onChange={(e) => setLogisticName(e.target.value)}
+            onChange={(e) => {
+              setLogisticName(e.target.value);
+              if (message === "Look up shipping options and pick a carrier first.") setMessage(null);
+            }}
             className="w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
           >
             {shippingOptions.map((o) => (
