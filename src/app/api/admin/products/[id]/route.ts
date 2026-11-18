@@ -3,6 +3,7 @@ import { setProductActive, setProductBadges } from "@/lib/cj-sync";
 import {
   getProductDetailForAdmin,
   setProductOverridePrice,
+  setProductCompareAtPrice,
   setProductCategory,
   deleteProduct,
   ProductHasOrdersError,
@@ -23,11 +24,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const hasIsActive = typeof body?.isActive === "boolean";
   const hasBadges = Array.isArray(body?.badges);
   const hasOverridePrice = body?.overridePrice === null || typeof body?.overridePrice === "number";
+  const hasCompareAtPrice = body?.compareAtPrice === null || typeof body?.compareAtPrice === "number";
   const hasCategoryId = typeof body?.categoryId === "string" && body.categoryId.trim() !== "";
 
-  if (!hasIsActive && !hasBadges && !hasOverridePrice && !hasCategoryId) {
+  if (!hasIsActive && !hasBadges && !hasOverridePrice && !hasCompareAtPrice && !hasCategoryId) {
     return NextResponse.json(
-      { error: "isActive (boolean), badges (string[]), overridePrice (number|null), or categoryId (string) is required" },
+      {
+        error:
+          "isActive (boolean), badges (string[]), overridePrice (number|null), compareAtPrice (number|null), or categoryId (string) is required",
+      },
       { status: 400 }
     );
   }
@@ -39,6 +44,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: "overridePrice must be greater than 0" }, { status: 400 });
     }
     await setProductOverridePrice(id, body.overridePrice);
+  }
+  if (hasCompareAtPrice) {
+    if (typeof body.compareAtPrice === "number" && body.compareAtPrice <= 0) {
+      return NextResponse.json({ error: "compareAtPrice must be greater than 0" }, { status: 400 });
+    }
+    await setProductCompareAtPrice(id, body.compareAtPrice);
   }
   if (hasCategoryId) {
     const category = await getCategoryById(body.categoryId);

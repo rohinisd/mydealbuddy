@@ -23,6 +23,9 @@ export default function AdminProductDetailPage() {
   const [priceInput, setPriceInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [compareAtInput, setCompareAtInput] = useState("");
+  const [compareAtSaving, setCompareAtSaving] = useState(false);
+  const [compareAtMessage, setCompareAtMessage] = useState<string | null>(null);
   const [categorySaving, setCategorySaving] = useState(false);
   const [categoryMessage, setCategoryMessage] = useState<string | null>(null);
 
@@ -46,6 +49,7 @@ export default function AdminProductDetailPage() {
       const data: AdminProductDetail = await res.json();
       setProduct(data);
       setPriceInput(data.overridePrice != null ? String(data.overridePrice) : "");
+      setCompareAtInput(data.compareAtPrice != null ? String(data.compareAtPrice) : "");
     }
     setLoading(false);
   }
@@ -215,6 +219,33 @@ export default function AdminProductDetailPage() {
       await load();
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSaveCompareAt() {
+    const trimmed = compareAtInput.trim();
+    const compareAtPrice = trimmed === "" ? null : Number(trimmed);
+    if (compareAtPrice !== null && (Number.isNaN(compareAtPrice) || compareAtPrice <= 0)) {
+      setCompareAtMessage("Enter a valid price greater than 0, or leave it blank to hide the discount badge.");
+      return;
+    }
+    setCompareAtSaving(true);
+    setCompareAtMessage(null);
+    try {
+      const res = await fetch(`/api/admin/products/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ compareAtPrice }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCompareAtMessage(`Failed: ${data.error}`);
+        return;
+      }
+      setCompareAtMessage(compareAtPrice === null ? "Cleared -- discount badge hidden." : "Saved.");
+      await load();
+    } finally {
+      setCompareAtSaving(false);
     }
   }
 
@@ -423,6 +454,47 @@ export default function AdminProductDetailPage() {
           estimated against the cheapest variant&apos;s CJ cost, before shipping.
         </p>
         {message && <p className="mt-2 text-sm text-text-secondary">{message}</p>}
+      </div>
+
+      <div className="mt-6 rounded-md border border-border p-4">
+        <p className="mb-3 text-xs font-bold uppercase tracking-wide text-text-muted">Discount Badge</p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-text-muted">Was Price (USD)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={compareAtInput}
+              onChange={(e) => setCompareAtInput(e.target.value)}
+              placeholder="e.g. 80.00"
+              className="w-36 rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleSaveCompareAt}
+            disabled={compareAtSaving}
+            className="btn-tracking rounded-md bg-accent px-5 py-2 text-sm font-bold uppercase text-white hover:opacity-90 disabled:opacity-60"
+          >
+            {compareAtSaving ? "Saving..." : "Save"}
+          </button>
+          {currentPriceNum != null && compareAtInput.trim() !== "" && !Number.isNaN(Number(compareAtInput)) && (
+            <p className="text-sm text-text-secondary">
+              Shows as{" "}
+              <span className="font-semibold text-text-primary">
+                ${currentPriceNum.toFixed(2)} ({Math.round(((Number(compareAtInput) - currentPriceNum) / Number(compareAtInput)) * 100)}% off)
+              </span>{" "}
+              <span className="line-through">${Number(compareAtInput).toFixed(2)}</span>
+            </p>
+          )}
+        </div>
+        <p className="mt-2 text-xs text-text-muted">
+          Only set this when you&apos;re running a genuine promotion -- it must be a real price this product actually
+          sold at, not an inflated number. Leave blank to show no discount badge. This is independent of CJ&apos;s own
+          &quot;suggested retail&quot;, which is never used for this.
+        </p>
+        {compareAtMessage && <p className="mt-2 text-sm text-text-secondary">{compareAtMessage}</p>}
       </div>
 
       <div className="mt-6 rounded-md border border-border p-4">

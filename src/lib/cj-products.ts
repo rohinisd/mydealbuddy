@@ -32,6 +32,7 @@ interface ProductRow {
   price_min: string | null;
   price_max: string | null;
   override_price: string | null;
+  compare_at_price: string | null;
   main_image_url: string | null;
   listed_count: number | null;
   sold_out: boolean | null;
@@ -54,6 +55,10 @@ function rowToProduct(row: ProductRow, imageUrl: string | null, gallery: string[
   // override_price column comment for why (CJ's number is a marketing
   // suggestion, not something the merchant controls).
   const price = row.override_price ? Number(row.override_price) : row.price_min ? Number(row.price_min) : 0;
+  // Only ever an admin-set "was" price (see compare_at_price migration) --
+  // CJ's suggested retail is deliberately never shown as a strikethrough
+  // price, since it isn't a real former price and would be a fake discount.
+  const mrp = row.compare_at_price ? Number(row.compare_at_price) : undefined;
   const isNew = Date.now() - new Date(row.first_synced_at).getTime() < NEW_BADGE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
   const badges = [...(row.badges ?? []), ...(isNew ? ["new"] : [])] as NonNullable<Product["badges"]>;
   const ratingCount = row.review_count ? Number(row.review_count) : 0;
@@ -68,6 +73,7 @@ function rowToProduct(row: ProductRow, imageUrl: string | null, gallery: string[
     brand: row.brand ?? "MyDealBuddy",
     name: row.name_en,
     price,
+    mrp,
     sku: row.spu ?? undefined,
     // CJ's own "suggested retail" is a marketing multiplier, not a market MRP --
     // deliberately not mapped to `mrp` here to avoid inventing fake discounts.
@@ -93,7 +99,7 @@ const BASE_QUERY = `
   SELECT p.id, p.pid, p.spu, p.name_en, p.brand,
          ac.full_slug AS category_full_slug, ac.l1_slug AS category_l1_slug, ac.l1_name AS category_l1_name,
          ac.l2_slug AS category_l2_slug, ac.l2_name AS category_l2_name, ac.l3_name AS category_l3_name,
-         p.price_min, p.price_max, p.override_price, p.main_image_url, p.listed_count, p.sold_out,
+         p.price_min, p.price_max, p.override_price, p.compare_at_price, p.main_image_url, p.listed_count, p.sold_out,
          p.badges, p.first_synced_at,
          (SELECT AVG(score) FROM (
             SELECT score FROM cj_product_review WHERE product_id = p.id AND score IS NOT NULL

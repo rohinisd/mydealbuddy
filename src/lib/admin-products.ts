@@ -93,6 +93,7 @@ export interface AdminProductDetail {
   priceMin: number | null;
   priceMax: number | null;
   overridePrice: number | null;
+  compareAtPrice: number | null;
   mainImageUrl: string | null;
   isActive: boolean;
   badges: string[];
@@ -126,6 +127,7 @@ export async function getProductDetailForAdmin(id: string): Promise<AdminProduct
     priceMin: row.price_min ? Number(row.price_min) : null,
     priceMax: row.price_max ? Number(row.price_max) : null,
     overridePrice: row.override_price ? Number(row.override_price) : null,
+    compareAtPrice: row.compare_at_price ? Number(row.compare_at_price) : null,
     mainImageUrl: row.main_image_url,
     isActive: row.is_active,
     badges: row.badges ?? [],
@@ -142,6 +144,11 @@ export async function getProductDetailForAdmin(id: string): Promise<AdminProduct
 
 export async function setProductOverridePrice(id: string, price: number | null): Promise<void> {
   await pool.query(`UPDATE cj_product SET override_price = $1 WHERE id = $2`, [price, id]);
+}
+
+/** The "was" price shown struck through next to the selling price. NULL hides the discount badge entirely. */
+export async function setProductCompareAtPrice(id: string, price: number | null): Promise<void> {
+  await pool.query(`UPDATE cj_product SET compare_at_price = $1 WHERE id = $2`, [price, id]);
 }
 
 /** Applies a batch of final-price decisions (e.g. from the CSV bulk-pricing import) as one transaction -- all rows land or none do. */
