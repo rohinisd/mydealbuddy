@@ -112,6 +112,27 @@ export function HeaderNav({ categories }: { categories: NavCategory[] }) {
           surfaces its groups/leaves for further drill-down on mobile. */}
       {mobileNavOpen && (
         <nav className="border-t border-border bg-white px-4 py-3 md:hidden">
+          {/* Profile, Wishlist and 24/7 Support only show in the desktop topbar/icon
+              row above (both hidden md:*) -- without these, mobile has no way to
+              reach them at all. Track Order and Buddy Coins are already in the
+              footer, so they're left out here to avoid duplicating the drawer. */}
+          <ul className="mb-3 space-y-3 border-b border-border pb-3 text-sm font-semibold uppercase text-text-primary">
+            <li>
+              <Link href="/my-account" onClick={() => setMobileNavOpen(false)}>
+                Profile
+              </Link>
+            </li>
+            <li>
+              <Link href="/wishlist" onClick={() => setMobileNavOpen(false)}>
+                Wishlist
+              </Link>
+            </li>
+            <li>
+              <Link href="/support" onClick={() => setMobileNavOpen(false)}>
+                24/7 Support
+              </Link>
+            </li>
+          </ul>
           <ul className="space-y-3 text-sm font-semibold uppercase text-text-primary">
             {categories.map((top) => (
               <li key={top.id}>

@@ -17,10 +17,23 @@ export function ProductGrid({
   const visible = products.slice(0, visibleCount);
   const hasMore = visibleCount < products.length;
 
+  // Re-creates the observer on every visibleCount change, not just when
+  // hasMore flips -- a single long-lived observer can silently stop firing
+  // after the browser restores this page from Next's router cache on Back
+  // navigation (scroll position and state come back, but the observer's
+  // view of "is the sentinel in view" doesn't always get re-evaluated).
+  // The scroll/resize fallback below covers that case directly: it doesn't
+  // depend on the observer's lifecycle at all, just the live DOM position.
   useEffect(() => {
     if (!hasMore) return;
     const el = sentinelRef.current;
     if (!el) return;
+
+    const checkAndLoad = () => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top <= window.innerHeight + 600) onLoadMore();
+    };
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) onLoadMore();
@@ -28,8 +41,20 @@ export function ProductGrid({
       { rootMargin: "600px" }
     );
     observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasMore, onLoadMore]);
+
+    // Catches the case where the sentinel is already in view the moment this
+    // effect runs (e.g. scroll position restored on Back) but the observer's
+    // initial callback doesn't land a load in time.
+    checkAndLoad();
+    window.addEventListener("scroll", checkAndLoad, { passive: true });
+    window.addEventListener("resize", checkAndLoad);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("scroll", checkAndLoad);
+      window.removeEventListener("resize", checkAndLoad);
+    };
+  }, [hasMore, onLoadMore, visibleCount]);
 
   if (products.length === 0) {
     return (
